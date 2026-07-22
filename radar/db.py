@@ -133,12 +133,31 @@ def _migrate_scan_run_updated_at(db_engine: Engine) -> None:
         )
 
 
+def _migrate_action_item_advice_source(db_engine: Engine) -> None:
+    """Track whether an action's text came from the LLM or rule templates."""
+
+    inspector = inspect(db_engine)
+    if "action_items" not in inspector.get_table_names():
+        return
+    existing = {column["name"] for column in inspector.get_columns("action_items")}
+    if "advice_source" in existing:
+        return
+    with db_engine.begin() as connection:
+        connection.execute(
+            text(
+                "ALTER TABLE action_items ADD COLUMN advice_source VARCHAR "
+                "DEFAULT 'rule'"
+            )
+        )
+
+
 # Each entry is (version, name, idempotent migration callable).
 Migration = tuple[int, str, Callable[[Engine], None]]
 MIGRATIONS: list[Migration] = [
     (1, "source_traceability_columns", _migrate_source_traceability_columns),
     (2, "model_run_traceability_columns", _migrate_model_run_traceability_columns),
     (3, "scan_run_updated_at", _migrate_scan_run_updated_at),
+    (4, "action_item_advice_source", _migrate_action_item_advice_source),
 ]
 
 

@@ -17,6 +17,7 @@ from radar.models import (
     SourceSnapshot,
 )
 from radar.schemas import (
+    ActionAdviceOutput,
     EvidenceSpan,
     ImpactAssessmentOutput,
     IncomingResult,
@@ -99,6 +100,21 @@ class ScriptedLLM:
                 change_depth=3,
                 suggested_action="narrow_claim",
                 uncertainty_sources=[],
+            )
+        if stage == "action_advice":
+            return ActionAdviceOutput(
+                category="experiment",
+                title="复现 NewRAG 对照并定位 RadarNet 差距",
+                rationale=(
+                    "NewRAG 在 DomainQA unseen-domain split 上报告 70.1 exact match，"
+                    "高于同一 BM25 baseline 下 RadarNet 的 64.0；该结果与你的 C1 直接可比，"
+                    "建议复现该对照并分析差距来源。"
+                ),
+                checklist=[
+                    "冻结双方 task/dataset/metric/comparator",
+                    "复现 NewRAG 报告的关键数字",
+                    "在你的实现上运行相同设置",
+                ],
             )
         raise AssertionError(f"unexpected stage: {stage}")
 
@@ -253,8 +269,8 @@ def test_live_weekly_scan_creates_verified_candidate(
         assert impact.stance == "challenges"
         assert impact.severity == "critical"
         assert impact.evidence_new_json["quote"] == INCOMING_QUOTE
-        assert runs == 2
-    assert llm.stages == ["incoming_result", "impact_assessment"]
+        assert runs == 3
+    assert llm.stages == ["incoming_result", "impact_assessment", "action_advice"]
     assert '"incoming_abstract"' in llm.prompts[0]
 
 
@@ -330,6 +346,20 @@ def test_scan_flags_retracted_supporting_source_and_creates_integrity_impact(
         assert impact.event_type == "retraction"
         assert impact.claim_revision_id == "claim-rev-01"
         assert impact.severity == "critical"
+        # One open action per (claim, type): the integrity impact owns the new
+        # revalidation action and the shared claim-level writing action.
+        claim_actions = list(
+            session.scalars(
+                select(ActionItem).where(
+                    ActionItem.claim_revision_id == "claim-rev-01",
+                    ActionItem.scan_run_id == scan_id,
+                )
+            )
+        )
+        assert {action.action_type for action in claim_actions} >= {
+            "revalidation",
+            "writing",
+        }
         assert {action.action_type for action in actions} == {
             "revalidation",
             "writing",
@@ -644,3 +674,81 @@ def test_public_pdf_enrichment_appends_version_label_once(
         snapshot = session.get(SourceSnapshot, "snapshot-pdf")
         assert snapshot.version_label == "2026-07-01:public-pdf"
         assert snapshot.content_text == fuller_text
+
+
+class AdviceFailLLM(ScriptedLLM):
+    """Analysis succeeds but the action-advice stage is unavailable."""
+
+    def generate_structured(self, *, stage, prompt, response_model):
+        if stage == "action_advice":
+            self.stages.append(stage)
+            self.prompts.append(prompt)
+            raise RuntimeError("advice_llm_failure")
+        return super().generate_structured(
+            stage=stage, prompt=prompt, response_model=response_model
+        )
+
+
+def test_scan_generates_llm_action_advice(db_session_factory, golden_case):
+    scan_id = WeeklyRadarService(
+        db_session_factory,
+        search_adapter=OnePaperSearch(),
+        llm_client=ScriptedLLM(),
+        settings=_settings(),
+    ).run(
+        golden_case,
+        query="DomainQA RadarNet exact match",
+        max_results=5,
+        analysis_limit=1,
+    )
+
+    with db_session_factory() as session:
+        actions = list(
+            session.scalars(
+                select(ActionItem).where(ActionItem.scan_run_id == scan_id)
+            )
+        )
+        advice_run = session.scalar(
+            select(ModelRun).where(
+                ModelRun.stage == "action_advice",
+                ModelRun.scan_run_id == scan_id,
+            )
+        )
+    llm_actions = [action for action in actions if action.advice_source == "llm"]
+    assert any(
+        action.action_type == "experiment"
+        and action.title == "复现 NewRAG 对照并定位 RadarNet 差距"
+        and "70.1" in action.rationale
+        for action in llm_actions
+    )
+    assert advice_run is not None
+    assert advice_run.case_id == golden_case
+    assert advice_run.parsed_output_json["category"] == "experiment"
+
+
+def test_scan_falls_back_to_rule_templates_when_advice_fails(
+    db_session_factory, golden_case
+):
+    scan_id = WeeklyRadarService(
+        db_session_factory,
+        search_adapter=OnePaperSearch(),
+        llm_client=AdviceFailLLM(),
+        settings=_settings(),
+    ).run(
+        golden_case,
+        query="DomainQA RadarNet exact match",
+        max_results=5,
+        analysis_limit=1,
+    )
+
+    with db_session_factory() as session:
+        scan = session.get(ScanRun, scan_id)
+        actions = list(
+            session.scalars(
+                select(ActionItem).where(ActionItem.scan_run_id == scan_id)
+            )
+        )
+    assert scan.status == "completed"
+    assert actions
+    assert all(action.advice_source == "rule" for action in actions)
+    assert any("复现反向结果并做条件匹配实验" in action.title for action in actions)

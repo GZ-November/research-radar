@@ -22,9 +22,10 @@ from radar.ui.components import (
 from radar.ui.home import render_home
 from radar.ui.impact_page import render_impact_page
 from radar.ui.ledger_page import render_ledger_page
+from radar.ui.settings_page import render_settings_page
 
 
-PAGES = ["项目工作台", "本周行动", "文献雷达", "改进工作台", "我的论文"]
+PAGES = ["项目工作台", "本周行动", "文献雷达", "改进工作台", "我的论文", "设置"]
 NAV_ALIASES = {
     "Home": "项目工作台",
     "Action Center": "本周行动",
@@ -134,7 +135,10 @@ def main() -> None:
 
     render_pending_confirmation()
 
-    if page == "项目工作台" or active_case_id is None:
+    if page == "设置":
+        # Settings must stay reachable before the first project exists.
+        render_settings_page()
+    elif page == "项目工作台" or active_case_id is None:
         render_home()
     elif page == "本周行动":
         render_action_page(active_case_id)

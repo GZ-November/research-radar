@@ -58,6 +58,7 @@ class ActionRecommendation(BaseModel):
         "experiment",
         "data",
         "writing",
+        "cite",
         "competitor_response",
         "revalidation",
     ]
@@ -67,6 +68,21 @@ class ActionRecommendation(BaseModel):
     checklist: list[str]
     due_label: str
     initial_status: Literal["proposed", "open"] = "proposed"
+    advice_source: Literal["llm", "rule"] = "rule"
+
+
+class ActionAdviceOutput(BaseModel):
+    """One concrete project action drafted by the analysis LLM for an impact.
+
+    Categories map to stored ActionItem.action_type values: 补实验
+    (experiment), 补数据 (data), 调整写作 (writing), 引用/关注 (cite),
+    验证重跑 (revalidation).
+    """
+
+    category: Literal["experiment", "data", "writing", "cite", "revalidation"]
+    title: str
+    rationale: str
+    checklist: list[str] = Field(default_factory=list)
 
 
 class ClaimCandidateOutput(BaseModel):

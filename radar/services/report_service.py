@@ -77,6 +77,7 @@ class ReportService:
                 "experiment",
                 "data",
                 "writing",
+                "cite",
                 "competitor_response",
                 "revalidation",
             }

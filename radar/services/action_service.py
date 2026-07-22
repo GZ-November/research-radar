@@ -16,11 +16,17 @@ from radar.models import (
     Source,
     SourceSnapshot,
 )
-from radar.schemas import ActionRecommendation
+from radar.schemas import ActionAdviceOutput, ActionRecommendation
 
 
 PRIORITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3}
 ACTIVE_STATUSES = {"proposed", "open", "in_progress"}
+SEVERITY_PRIORITY = {"critical": "high", "review": "medium", "informative": "low"}
+CATEGORY_DUE_LABEL = {
+    "revalidation": "48_hours",
+    "cite": "before_next_draft",
+    "writing": "before_next_draft",
+}
 
 
 class ActionService:
@@ -33,7 +39,29 @@ class ActionService:
         claim: Claim,
         revision: ClaimRevision,
         source: Source,
+        advice: ActionAdviceOutput | None = None,
     ) -> list[ActionRecommendation]:
+        # Integrity events keep the deterministic safety templates; every other
+        # impact prefers the concrete LLM-drafted advice when one was generated
+        # during the scan.
+        is_integrity = (
+            impact.impact_mode == "research_integrity"
+            or impact.event_type == "retraction"
+        )
+        if advice is not None and not is_integrity:
+            return [
+                ActionRecommendation(
+                    action_type=advice.category,
+                    priority=SEVERITY_PRIORITY.get(impact.severity, "medium"),
+                    title=advice.title,
+                    rationale=advice.rationale,
+                    checklist=advice.checklist,
+                    due_label=CATEGORY_DUE_LABEL.get(advice.category, "this_week"),
+                    initial_status="proposed",
+                    advice_source="llm",
+                )
+            ]
+
         recommendations: list[ActionRecommendation] = []
 
         def add(
@@ -175,19 +203,24 @@ class ActionService:
                     "this_week",
                 )
 
-        if unknown_fields and impact.comparability != "compatible":
+        if impact.stance in {"neutral", "uncertain"} and impact.comparability != "compatible":
+            # Non-comparable does not mean irrelevant: turn adjacent-task
+            # evidence into a positioning/watch suggestion instead of jargon
+            # about missing condition fields.
             add(
-                "data",
-                "medium",
-                f"补齐 {claim_label} 的可比性信息：{', '.join(unknown_fields)}",
-                "缺失条件使当前证据不能直接裁决主张，需要补数据或核对论文附录/代码。",
+                "cite",
+                "medium" if impact.severity == "review" else "low",
+                f"区分定位并关注：{source_label} 与 {claim_label} 条件不可直接比较",
+                f"{source_label} 在不同任务、数据或指标设置下考察了与 {claim_label} 相邻的假设；"
+                "当前证据不能直接支持或反驳你的主张，建议在 related work 中明确区分定位，"
+                "并评估是否值得增补一个条件匹配的对照实验。",
                 [
-                    f"核对缺失字段：{', '.join(unknown_fields)}",
-                    "检查补充材料、代码和数据卡",
-                    "必要时联系作者确认评估设置",
-                    "更新 Claim contract 后重新评估",
+                    "核对双方任务、数据集、指标与 split 的差异",
+                    "在 related work 中说明设置差异与定位区别",
+                    "评估是否增补一个条件匹配的对照实验",
+                    "持续关注该工作的后续可比结果",
                 ],
-                "this_week",
+                "before_next_draft",
             )
 
         if impact.impact_mode == "method_substitution" and impact.stance != "challenges":
@@ -245,7 +278,11 @@ class ActionService:
 
         return recommendations
 
-    def sync_scan_actions(self, scan_run_id: str) -> list[str]:
+    def sync_scan_actions(
+        self,
+        scan_run_id: str,
+        advice_by_impact: dict[str, ActionAdviceOutput] | None = None,
+    ) -> list[str]:
         with session_scope(self.session_factory) as session:
             impact_ids = list(
                 session.scalars(
@@ -256,22 +293,35 @@ class ActionService:
                     )
                 )
             )
+        advice_by_impact = advice_by_impact or {}
         action_ids: list[str] = []
         for impact_id in impact_ids:
-            action_ids.extend(self.sync_impact_actions(impact_id))
+            action_ids.extend(
+                self.sync_impact_actions(
+                    impact_id, advice=advice_by_impact.get(impact_id)
+                )
+            )
         return action_ids
 
     def sync_impact_actions(
-        self, impact_id: str, session: Session | None = None
+        self,
+        impact_id: str,
+        session: Session | None = None,
+        advice: ActionAdviceOutput | None = None,
     ) -> list[str]:
         if session is not None:
             # Caller owns the transaction (e.g. review decisions sync actions
             # atomically with the decision itself).
-            return self._sync_impact_actions(session, impact_id)
+            return self._sync_impact_actions(session, impact_id, advice)
         with session_scope(self.session_factory) as session:
-            return self._sync_impact_actions(session, impact_id)
+            return self._sync_impact_actions(session, impact_id, advice)
 
-    def _sync_impact_actions(self, session: Session, impact_id: str) -> list[str]:
+    def _sync_impact_actions(
+        self,
+        session: Session,
+        impact_id: str,
+        advice: ActionAdviceOutput | None = None,
+    ) -> list[str]:
         impact = session.get(ImpactCandidate, impact_id)
         if impact is None or impact.trust_state != "verified":
             return []
@@ -282,24 +332,45 @@ class ActionService:
         source = session.get(Source, snapshot.source_id) if snapshot else None
         if not all([revision, claim, scan, source]):
             return []
-        recommendations = self._recommendations(impact, claim, revision, source)
+        recommendations = self._recommendations(
+            impact, claim, revision, source, advice=advice
+        )
         action_ids: list[str] = []
         created_types: list[str] = []
         for recommendation in recommendations:
+            # One open action per (claim revision, action type): several
+            # impacts of the same claim merge into it, and a later scan
+            # updates the still-open action instead of opening a duplicate.
             existing = session.scalar(
-                select(ActionItem).where(
-                    ActionItem.impact_candidate_id == impact.id,
+                select(ActionItem)
+                .where(
+                    ActionItem.claim_revision_id == revision.id,
                     ActionItem.action_type == recommendation.action_type,
+                    ActionItem.status.in_(ACTIVE_STATUSES),
                 )
+                .order_by(ActionItem.created_at.desc(), ActionItem.id)
             )
             if existing is None:
-                existing = ActionItem(
-                    id=str(
+                base_id = str(
+                    uuid5(
+                        NAMESPACE_URL,
+                        f"research-radar:action:{revision.id}:{recommendation.action_type}",
+                    )
+                )
+                action_id = base_id
+                if session.get(ActionItem, base_id) is not None:
+                    # A closed (done/dismissed) action from an earlier scan
+                    # keeps this deterministic id; reopen the topic as a fresh
+                    # row keyed by the current scan.
+                    action_id = str(
                         uuid5(
                             NAMESPACE_URL,
-                            f"research-radar:{impact.id}:{recommendation.action_type}",
+                            f"research-radar:action:{revision.id}:"
+                            f"{recommendation.action_type}:{scan.id}",
                         )
-                    ),
+                    )
+                existing = ActionItem(
+                    id=action_id,
                     case_id=scan.case_id,
                     scan_run_id=scan.id,
                     impact_candidate_id=impact.id,
@@ -316,9 +387,12 @@ class ActionService:
                         and recommendation.initial_status == "proposed"
                         else recommendation.initial_status
                     ),
+                    advice_source=recommendation.advice_source,
                 )
                 session.add(existing)
                 created_types.append(recommendation.action_type)
+            else:
+                self._merge_recommendation(existing, recommendation, scan, impact)
             action_ids.append(existing.id)
         if created_types:
             session.add(
@@ -334,6 +408,42 @@ class ActionService:
                 )
             )
         return action_ids
+
+    @staticmethod
+    def _merge_recommendation(
+        existing: ActionItem,
+        recommendation: ActionRecommendation,
+        scan: ScanRun,
+        impact: ImpactCandidate,
+    ) -> None:
+        """Fold another impact's recommendation into the open per-claim action.
+
+        Keeps the highest priority, deduplicates checklist items, and never
+        overwrites model-written advice with a rule-template re-sync.
+        """
+
+        existing.scan_run_id = scan.id
+        existing.impact_candidate_id = impact.id
+        if (
+            impact.review_state in {"confirmed", "edited"}
+            and existing.status == "proposed"
+        ):
+            existing.status = "open"
+        if PRIORITY_ORDER.get(recommendation.priority, 9) < PRIORITY_ORDER.get(
+            existing.priority, 9
+        ):
+            existing.priority = recommendation.priority
+        if existing.advice_source == "llm" and recommendation.advice_source != "llm":
+            return
+        existing.title = recommendation.title
+        existing.rationale = recommendation.rationale
+        existing.due_label = recommendation.due_label
+        merged = list(existing.checklist_json)
+        for item in recommendation.checklist:
+            if item not in merged:
+                merged.append(item)
+        existing.checklist_json = merged
+        existing.advice_source = recommendation.advice_source
 
     def list_actions(
         self,

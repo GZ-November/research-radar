@@ -447,30 +447,35 @@ def render_llm_setup_guidance(setup: dict | None = None) -> None:
     if setup["configured"]:
         return
     st.warning("尚未配置可用的分析模型，AI 分析功能暂时不可用。")
-    missing = "、".join(f"`{name}`" for name in setup["missing"])
     st.markdown(
-        f"远程模型缺少环境变量：{missing}。请在项目根目录的 `.env` 文件中"
-        "按以下任一方案补全，**保存后重启应用**生效。"
+        "请在左侧导航的 **设置** 页选择远程 API 或本地 Ollama，填入对应信息并保存，"
+        "**保存后立即生效，无需重启**。"
     )
-    remote_tab, local_tab = st.tabs(
-        ["方案一：远程 API（DeepSeek 示例）", "方案二：本地模型（Ollama，文稿不出本机）"]
-    )
-    with remote_tab:
-        st.code(
-            "LLM_PROVIDER=deepseek\n"
-            "LLM_API_KEY=sk-你的密钥\n"
-            "LLM_MODEL=deepseek-chat\n"
-            "LLM_BASE_URL=https://api.deepseek.com",
-            language="bash",
+    with st.expander("高级选项：直接编辑 .env 文件"):
+        missing = "、".join(f"`{name}`" for name in setup["missing"])
+        st.markdown(
+            f"远程模型缺少环境变量：{missing}。也可以在项目根目录的 `.env` 文件中"
+            "按以下任一方案补全，保存后重启应用生效。"
         )
-        st.caption("分析时会把文稿全文发送给远程 API。")
-    with local_tab:
-        st.code(
-            "LOCAL_LLM_MODEL=qwen3:4b\n"
-            "LOCAL_LLM_BASE_URL=http://127.0.0.1:11434",
-            language="bash",
+        remote_tab, local_tab = st.tabs(
+            ["方案一：远程 API（DeepSeek 示例）", "方案二：本地模型（Ollama，文稿不出本机）"]
         )
-        st.caption("需先安装并启动 Ollama 并拉取对应模型；配置后优先于远程 API。")
+        with remote_tab:
+            st.code(
+                "LLM_PROVIDER=deepseek\n"
+                "LLM_API_KEY=sk-你的密钥\n"
+                "LLM_MODEL=deepseek-chat\n"
+                "LLM_BASE_URL=https://api.deepseek.com",
+                language="bash",
+            )
+            st.caption("分析时会把文稿全文发送给远程 API。")
+        with local_tab:
+            st.code(
+                "LOCAL_LLM_MODEL=qwen3:4b\n"
+                "LOCAL_LLM_BASE_URL=http://127.0.0.1:11434",
+                language="bash",
+            )
+            st.caption("需先安装并启动 Ollama 并拉取对应模型；配置后优先于远程 API。")
 
 
 def label_for(labels: dict[str, str], value: str) -> str:

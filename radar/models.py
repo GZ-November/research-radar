@@ -195,6 +195,7 @@ class ActionItem(TimestampMixin, Base):
     checklist_json: Mapped[list[str]] = mapped_column(JSON, default=list)
     due_label: Mapped[str] = mapped_column(String, default="this_week")
     status: Mapped[str] = mapped_column(String, default="proposed", index=True)
+    advice_source: Mapped[str] = mapped_column(String, default="rule")
 
 
 class ReviewDecision(TimestampMixin, Base):

@@ -12,6 +12,7 @@ dist/
 *.egg-info/
 data/*.db
 data/*.db-*
+data/settings.local.env
 data/cache/
 data/papers/
 data/test_papers/

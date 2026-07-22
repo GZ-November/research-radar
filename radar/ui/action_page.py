@@ -49,6 +49,7 @@ ACTION_LABEL = {
     "experiment": "改实验",
     "data": "补数据/条件",
     "writing": "调整写作",
+    "cite": "引用/关注",
     "competitor_response": "竞争响应",
     "revalidation": "重新验证",
 }
@@ -399,6 +400,8 @@ def render_action_page(case_id: str) -> None:
                     f"关联 Claim：{claim.stable_key if claim else '—'}"
                 )
                 st.write(action.rationale)
+                if action.advice_source == "llm" and source:
+                    st.caption(f"AI 建议 · 基于《{source.title}》")
                 if source:
                     st.markdown("**触发来源**")
                     render_source_traceability(source)

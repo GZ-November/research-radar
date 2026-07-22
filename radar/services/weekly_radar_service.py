@@ -39,6 +39,7 @@ from radar.models import (
     SourceSnapshot,
 )
 from radar.schemas import (
+    ActionAdviceOutput,
     EmpiricalClaimContract,
     ImpactAssessmentOutput,
     IncomingResult,
@@ -597,7 +598,13 @@ class WeeklyRadarService:
                     else None
                 ),
             )
-            ActionService(self.session_factory).sync_scan_actions(scan_id)
+            self._emit_progress(
+                progress_callback, 0.97, "正在生成针对你论文的具体行动建议…"
+            )
+            advice_by_impact = self._action_advice(scan_id, case_id)
+            ActionService(self.session_factory).sync_scan_actions(
+                scan_id, advice_by_impact=advice_by_impact
+            )
             self._emit_progress(progress_callback, 1.0, "扫描完成，正在生成项目行动…")
             return scan_id
         except ScanCancelled:
@@ -1307,6 +1314,92 @@ class WeeklyRadarService:
                 existing.add((revision_id, snapshot_id))
                 created += 1
         return created
+
+    def _action_advice(
+        self, scan_id: str, case_id: str
+    ) -> dict[str, ActionAdviceOutput]:
+        """Draft one concrete action per verified impact of a finished scan.
+
+        Runs once inside the scan pipeline (LLM client already configured) so
+        page renders never call the model. Integrity events and no-change
+        comparisons are left to the deterministic rule path. Any LLM failure
+        (unconfigured client, network, parse) stops the batch and degrades the
+        remaining impacts to rule templates.
+        """
+
+        pending: list[dict] = []
+        with session_scope(self.session_factory) as session:
+            impacts = list(
+                session.scalars(
+                    select(ImpactCandidate).where(
+                        ImpactCandidate.scan_run_id == scan_id,
+                        ImpactCandidate.trust_state == "verified",
+                        ImpactCandidate.review_state != "dismissed",
+                    )
+                )
+            )
+            for impact in impacts:
+                if (
+                    impact.impact_mode == "research_integrity"
+                    or impact.event_type == "retraction"
+                ):
+                    continue
+                if (
+                    impact.impact_mode == "no_material_change"
+                    and impact.suggested_action == "no_action"
+                ):
+                    continue
+                revision = session.get(ClaimRevision, impact.claim_revision_id)
+                snapshot = session.get(SourceSnapshot, impact.source_snapshot_id)
+                source = session.get(Source, snapshot.source_id) if snapshot else None
+                if not all([revision, snapshot, source]):
+                    continue
+                pending.append(
+                    {
+                        "impact_id": impact.id,
+                        "revision_id": revision.id,
+                        "snapshot_id": snapshot.id,
+                        "payload": {
+                            "claim_statement": revision.statement,
+                            "claim_centrality": revision.centrality,
+                            "claim_contract": revision.contract_json,
+                            "impact": {
+                                "stance": impact.stance,
+                                "impact_mode": impact.impact_mode,
+                                "comparability": impact.comparability,
+                                "severity": impact.severity,
+                                "suggested_action": impact.suggested_action,
+                                "strategic_flags": impact.strategic_flags_json,
+                                "condition_differences": (
+                                    impact.condition_differences_json
+                                ),
+                                "uncertainty_sources": impact.uncertainty_json,
+                                "incoming_evidence_quote": (
+                                    impact.evidence_new_json.get("quote")
+                                ),
+                            },
+                            "incoming_title": source.title,
+                            "incoming_abstract": snapshot.abstract,
+                        },
+                    }
+                )
+        advice: dict[str, ActionAdviceOutput] = {}
+        for item in pending:
+            try:
+                output = self._call_model(
+                    stage="action_advice",
+                    prompt=_prompt("action_advice.txt", item["payload"]),
+                    response_model=ActionAdviceOutput,
+                    input_refs=[item["revision_id"], item["snapshot_id"]],
+                    case_id=case_id,
+                    scan_run_id=scan_id,
+                )
+            except Exception:
+                # Unconfigured or failing LLM: rule templates take over for
+                # every remaining impact of this scan.
+                break
+            advice[item["impact_id"]] = output
+        return advice
 
     def _call_model(
         self,

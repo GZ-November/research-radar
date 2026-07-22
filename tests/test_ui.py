@@ -17,6 +17,7 @@ def test_streamlit_project_workspace_and_project_navigation_have_no_exception():
         "文献雷达",
         "改进工作台",
         "我的论文",
+        "设置",
     ]
     assert app.selectbox[0].label == "当前项目"
 
@@ -33,3 +34,8 @@ def test_streamlit_project_workspace_and_project_navigation_have_no_exception():
     _nav_radio(app).set_value("改进工作台").run()
     assert not app.exception
     assert "改进工作台" in [title.value for title in app.title]
+
+    _nav_radio(app).set_value("设置").run()
+    assert not app.exception
+    assert "设置" in [title.value for title in app.title]
+    assert any(button.label == "测试连接" for button in app.button)

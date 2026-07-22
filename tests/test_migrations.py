@@ -26,7 +26,7 @@ def test_init_database_applies_and_records_migrations(tmp_path):
                 text("SELECT version FROM schema_migrations")
             )
         }
-    assert versions == {1, 2, 3}
+    assert versions == {1, 2, 3, 4}
 
     # A second pass applies nothing and does not fail on duplicate records.
     assert run_migrations(engine) == []
@@ -39,14 +39,19 @@ def test_legacy_tables_gain_traceability_columns(tmp_path):
     with engine.begin() as connection:
         connection.execute(text("CREATE TABLE sources (id VARCHAR PRIMARY KEY)"))
         connection.execute(text("CREATE TABLE model_runs (id VARCHAR PRIMARY KEY)"))
+        connection.execute(text("CREATE TABLE action_items (id VARCHAR PRIMARY KEY)"))
 
     init_database(engine)
 
     inspector = inspect(engine)
     source_columns = {column["name"] for column in inspector.get_columns("sources")}
     run_columns = {column["name"] for column in inspector.get_columns("model_runs")}
+    action_columns = {
+        column["name"] for column in inspector.get_columns("action_items")
+    }
     assert {"venue", "publication_type", "pdf_url"} <= source_columns
     assert {"case_id", "scan_run_id"} <= run_columns
+    assert "advice_source" in action_columns
     index_names = {index["name"] for index in inspector.get_indexes("model_runs")}
     assert "ix_model_runs_case_id" in index_names
     assert "ix_model_runs_scan_run_id" in index_names
