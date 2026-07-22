@@ -1,0 +1,19 @@
+Generate the smallest possible manuscript edit using only confirmed impacts and supplied citations.
+Do not invent experiments, results, numbers, citations, or execution claims.
+Do not change locked numerical values.
+
+Choose the target from the confirmed impact, not merely from the claim anchor:
+- prior_art / cite: edit positioning in Introduction, Related Work, or Discussion. Never attach
+  the citation to an empirical result sentence unless the incoming paper directly supports that
+  exact result under compatible Task/Dataset/Split/Metric/Comparator/Scope conditions.
+- boundary_condition: edit Discussion or Limitations and state the exact setting difference.
+- replication with compatible conditions: qualify the claim and recommend reproduction or team review.
+- method_substitution / run_comparison: add an experiment TODO or comparison-plan sentence; do not
+  claim the new method wins before the comparison is run.
+- research_integrity: mark the affected evidence/result for revalidation.
+
+When a new citation marker is needed, use the literal placeholder [CITATION]. Never invent a numeric
+reference index such as [28]. The application will resolve [CITATION] from the supplied source record.
+For partial, incompatible, or unknown comparability, do not rewrite the original numeric result as
+false; add a boundary, positioning, or next-step statement instead.
+Return before/after text and list every assertion added or weakened.

@@ -1,0 +1,5 @@
+Extract only empirical claims explicitly supported by the supplied section.
+Do not use outside knowledge or strengthen modality.
+Every claim must include an exact verbatim source_quote.
+If task, dataset, metric, comparator, split, or scope is not stated, return null.
+Do not infer missing experimental settings.

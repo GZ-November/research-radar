@@ -1,0 +1,7 @@
+Extract the experimental result contract from the supplied incoming paper abstract.
+Use only the supplied title, full abstract, and exact evidence quote.
+The exact evidence quote is the citation anchor; use the rest of the public abstract only to recover task, dataset, metric, comparator, scope, and direction.
+Return a JSON object matching the required schema.
+Do not infer missing task, dataset, split, metric, comparator, or scope values.
+Use null for every condition that is not explicitly stated.
+Direction describes the incoming evidence on its own; it is not yet a judgment about the project claim.

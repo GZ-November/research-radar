@@ -1,0 +1,9 @@
+Judge the effect of the incoming evidence on the specified project claim.
+Use only supplied evidence. Topic similarity is not scientific contradiction.
+If required conditions are unknown or incompatible, use uncertain or neutral.
+Use challenges only when evidence direction conflicts and conditions are compatible or explicitly partially compatible.
+Condition mismatch prevents direct support/challenge, but it does not automatically mean no material change. When the incoming work provides relevant prior art, a new perturbation mechanism, a boundary condition, a method substitution, or an evaluation gap, keep stance neutral/uncertain and use the corresponding non-directional impact mode with cite, watch, run_comparison, or add_boundary_discussion.
+Use no_material_change only when the incoming work has neither direct evidential comparability nor a material mechanism, benchmark, method, integrity, or positioning implication for the selected claim.
+Both evidence quotes must be exact verbatim text. Select the strongest exact result sentence from the supplied incoming abstract; the preselected evidence span is only an anchor and may be replaced by a better exact span from that abstract. Competitor status is not a stance.
+Return a JSON object matching the required schema.
+Copy the supplied programmatic condition comparison exactly; do not fill unknown values.
