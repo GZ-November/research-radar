@@ -30,10 +30,18 @@ def test_explicit_budget_overrides_settings_default():
 
 
 def test_default_budget_derives_from_settings_token_limit():
-    settings = Settings(_env_file=None, llm_max_tokens=4_096)
+    # Output cap no longer drives the input budget; the context window does.
+    settings = Settings(_env_file=None, llm_max_tokens=4_096, llm_context_tokens=8_000)
     budget = prompt_char_budget(settings)
-    assert budget == int(4_096 * 3.5) - 6_000
+    assert budget == int(8_000 * 3.5) - 6_000
 
     text = "y" * (budget + 5_000)
-    truncated = truncate_for_prompt(text, purpose="test")
+    truncated = truncate_for_prompt(text, max_chars=budget, purpose="test")
     assert len(truncated) <= budget
+
+
+def test_default_budget_uses_mode_defaults():
+    remote = Settings(_env_file=None)
+    assert prompt_char_budget(remote) == int(60_000 * 3.5) - 6_000
+    local = Settings(_env_file=None, local_llm_model="qwen3:4b")
+    assert prompt_char_budget(local) == int(28_000 * 3.5) - 6_000

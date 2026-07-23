@@ -19,3 +19,4 @@ data/test_papers/
 data/snapshots/*
 !data/snapshots/.gitkeep
 data/uploads/
+.tmp_ref/

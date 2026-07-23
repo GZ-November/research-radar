@@ -151,6 +151,21 @@ def _migrate_action_item_advice_source(db_engine: Engine) -> None:
         )
 
 
+def _migrate_source_cited_by_count(db_engine: Engine) -> None:
+    """Add the citation-count quality signal populated by the OpenAlex source."""
+
+    inspector = inspect(db_engine)
+    if "sources" not in inspector.get_table_names():
+        return
+    existing = {column["name"] for column in inspector.get_columns("sources")}
+    if "cited_by_count" in existing:
+        return
+    with db_engine.begin() as connection:
+        connection.execute(
+            text("ALTER TABLE sources ADD COLUMN cited_by_count INTEGER")
+        )
+
+
 # Each entry is (version, name, idempotent migration callable).
 Migration = tuple[int, str, Callable[[Engine], None]]
 MIGRATIONS: list[Migration] = [
@@ -158,6 +173,7 @@ MIGRATIONS: list[Migration] = [
     (2, "model_run_traceability_columns", _migrate_model_run_traceability_columns),
     (3, "scan_run_updated_at", _migrate_scan_run_updated_at),
     (4, "action_item_advice_source", _migrate_action_item_advice_source),
+    (5, "source_cited_by_count", _migrate_source_cited_by_count),
 ]
 
 

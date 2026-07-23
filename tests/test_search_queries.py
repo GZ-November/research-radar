@@ -47,7 +47,7 @@ class QueryLLM:
         self.fail = fail
         self.calls = 0
 
-    def generate_structured(self, *, stage, prompt, response_model):
+    def generate_structured(self, *, stage, prompt, response_model, max_tokens=None):
         if stage == "search_query_generation":
             self.calls += 1
             if self.fail:

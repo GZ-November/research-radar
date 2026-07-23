@@ -21,7 +21,7 @@ from radar.ui.components import (
     render_contract,
     render_llm_setup_guidance,
 )
-from radar.ui.upload_helpers import persist_uploaded_manuscript
+from radar.ui.upload_helpers import discard_uploaded_manuscript, persist_uploaded_manuscript
 
 
 # Keep claim edit/split forms out of the per-claim expanders: with many claims
@@ -179,8 +179,10 @@ def render_case_page(case_id: str) -> None:
                     with st.spinner("正在同步新版本：解析文稿、承接稳定 Claim 并抽取新候选…"):
                         result = CaseService().add_manuscript_version(case_id, upload_path)
                 except ValueError as exc:
+                    discard_uploaded_manuscript(upload_path)
                     st.error(str(exc))
                 except RuntimeError as exc:
+                    discard_uploaded_manuscript(upload_path)
                     st.error(f"文稿同步失败：{exc}")
                 else:
                     st.session_state["_manuscript_sync_result"] = {

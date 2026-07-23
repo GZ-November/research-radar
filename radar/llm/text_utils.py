@@ -13,10 +13,22 @@ OMISSION_MARKER_TEMPLATE = "\n[... omitted {omitted} chars ...]\n"
 
 
 def prompt_char_budget(settings: Settings | None = None) -> int:
-    """Return the character budget for one large text block inside a prompt."""
+    """Return the character budget for one large text block inside a prompt.
+
+    The budget derives from the model's *input* context window
+    (``llm_context_tokens``), not the output cap (``llm_max_tokens``) —
+    remote models like DeepSeek accept 64k+ input tokens even when the
+    output is capped at 4k. Local Ollama defaults to a 32k context.
+    """
 
     settings = settings or get_settings()
-    budget = int(settings.llm_max_tokens * CHARS_PER_TOKEN) - PROMPT_OVERHEAD_CHARS
+    if settings.llm_context_tokens is not None:
+        context_tokens = settings.llm_context_tokens
+    elif settings.local_llm_model:
+        context_tokens = 28_000
+    else:
+        context_tokens = 60_000
+    budget = int(context_tokens * CHARS_PER_TOKEN) - PROMPT_OVERHEAD_CHARS
     return max(budget, 1_000)
 
 

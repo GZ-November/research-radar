@@ -184,3 +184,7 @@ ollama pull qwen3:4b
 ## 可选 Live Adapters
 
 `ArxivSearchAdapter` 提供 daily cache、单连接和至少 3 秒请求间隔。将它放进 `FallbackSearchAdapter` 可在超时、429 或网络失败时明确降级到 `FixtureSearchAdapter`。Crossref integrity adapter 已接入扫描管线，对命中论文做撤稿/研究诚信检查（可通过 `CROSSREF_MAILTO` 配置联系邮箱），不影响离线 Demo。
+
+`OpenAlexSearchAdapter` 是默认开启的第二文献源：扫描时与 arXiv 并行检索（复用 `CROSSREF_MAILTO` 进 polite pool），结果按 DOI/规范化标题去重，单源失败不阻断扫描并记录在 scan stats 的 `source_failures` 中。扫描还会做引用图谱发现：LLM 从文稿参考文献部分抽取条目（按文稿内容哈希缓存），经 OpenAlex 解析后取近期引用了这些文献的新论文并入候选池（封顶 30 篇，单条失败跳过；LLM 未配置时静默跳过）。
+
+配置了 LLM 时，扫描会额外生成一段 HyDE"假想相关论文摘要"（按问题+已确认 claims 缓存）：作为一条自然语言查询加入关键词搜索；配置了 embedding 时还会作为语义排序的查询文本。非 arXiv 来源、有 DOI 但无 PDF 链接的论文会经 Unpaywall（免费、复用 `CROSSREF_MAILTO`）解析 OA 全文并走同一 PDF 解析路径，无 OA 全文则保持摘要级比较。

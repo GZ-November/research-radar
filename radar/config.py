@@ -61,6 +61,9 @@ class Settings(BaseSettings):
     llm_thinking: Literal["enabled", "disabled"] = "enabled"
     llm_reasoning_effort: Literal["high", "max"] = "high"
     llm_max_tokens: int = Field(default=4096, ge=256, le=384_000)
+    # Input-side context window used for prompt truncation budgets. Distinct
+    # from llm_max_tokens (output cap). None derives a safe default per mode.
+    llm_context_tokens: int | None = Field(default=None, ge=4_000, le=1_000_000)
     llm_timeout_seconds: float = Field(default=120.0, ge=15.0, le=900.0)
     llm_max_retries: int = Field(default=2, ge=0, le=5)
     llm_retry_backoff_seconds: float = Field(default=2.0, ge=0.0, le=60.0)
@@ -80,6 +83,10 @@ class Settings(BaseSettings):
 
     data_dir: Path = Path("data")
     fixture_case_dir: Path = Path("tests/fixtures/golden_case")
+
+    # PDF parsing backend: pymupdf (default, lightweight) or docling
+    # (optional extra, better for table/formula-heavy manuscripts).
+    pdf_parser_backend: Literal["pymupdf", "docling"] = "pymupdf"
 
     # Contact address sent with Crossref API requests (politeness pool).
     crossref_mailto: str = "local@example.invalid"

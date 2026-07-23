@@ -273,19 +273,11 @@ button[data-testid^="stBaseButton-secondary"]:hover {
 .rr-hero-name { color: #ffffff; font-size: 1.05rem; font-weight: 700; letter-spacing: 0.01em; }
 .rr-hero-tag { color: rgba(255, 255, 255, 0.85); font-size: 0.85rem; margin-top: 2px; }
 
-/* Sidebar status rows and pending pill */
+/* Sidebar section labels and pending pill */
 .rr-section-label {
   font-size: 0.68rem; font-weight: 700; letter-spacing: 0.12em;
   text-transform: uppercase; color: #71809a; margin: 14px 0 4px;
 }
-.rr-status-row { display: flex; align-items: baseline; gap: 8px; padding: 3px 0; font-size: 0.82rem; }
-.rr-status-dot {
-  width: 7px; height: 7px; flex: none; border-radius: 50%;
-  background: #34d399; transform: translateY(-1px);
-}
-.rr-status-dot.warn { background: #fbbf24; }
-.rr-status-label { color: #8fa1b3; }
-.rr-status-value { color: #e6eaf2; font-weight: 500; }
 .rr-pill {
   display: inline-block; padding: 2px 10px; border-radius: 999px;
   font-size: 0.75rem; font-weight: 600;
@@ -368,16 +360,6 @@ def sidebar_brand() -> None:
 
 def sidebar_section(label: str) -> None:
     st.markdown(f'<div class="rr-section-label">{label}</div>', unsafe_allow_html=True)
-
-
-def sidebar_status_row(label: str, value: str, *, ok: bool = True) -> None:
-    dot_class = "rr-status-dot" if ok else "rr-status-dot warn"
-    st.sidebar.markdown(
-        f'<div class="rr-status-row"><span class="{dot_class}"></span>'
-        f'<span class="rr-status-label">{label}</span>'
-        f'<span class="rr-status-value">{value}</span></div>',
-        unsafe_allow_html=True,
-    )
 
 
 def pending_pill(pending: int) -> None:

@@ -39,7 +39,7 @@ class ScriptedPatchLLM:
             "latency_ms": 12,
         }
 
-    def generate_structured(self, *, stage, prompt, response_model):
+    def generate_structured(self, *, stage, prompt, response_model, max_tokens=None):
         self.stages.append(stage)
         return PatchProposalOutput(
             edit_class="add_boundary_discussion",
@@ -67,7 +67,7 @@ class PriorArtPatchLLM:
             "latency_ms": 12,
         }
 
-    def generate_structured(self, *, stage, prompt, response_model):
+    def generate_structured(self, *, stage, prompt, response_model, max_tokens=None):
         self.calls += 1
         if self.calls == 1:
             return PatchProposalOutput(

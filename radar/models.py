@@ -95,6 +95,7 @@ class Source(TimestampMixin, Base):
     venue: Mapped[str | None] = mapped_column(Text, nullable=True)
     publication_type: Mapped[str] = mapped_column(String, default="preprint")
     pdf_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    cited_by_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     integrity_state: Mapped[str] = mapped_column(String, default="normal")
 
 

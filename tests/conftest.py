@@ -7,6 +7,7 @@ from sqlalchemy.orm import sessionmaker
 
 import radar.services.claim_service as claim_service_module
 from radar.adapters.crossref import CrossrefIntegrityAdapter
+from radar.adapters.unpaywall import UnpaywallAdapter
 from radar.db import create_db_engine, init_database
 from radar.services.case_service import CaseService
 
@@ -15,6 +16,12 @@ from radar.services.case_service import CaseService
 def crossref_offline_stub(monkeypatch):
     """Keep tests offline: default Crossref lookups to an empty message."""
     monkeypatch.setattr(CrossrefIntegrityAdapter, "_message", lambda self, doi: {})
+
+
+@pytest.fixture(autouse=True)
+def unpaywall_offline_stub(monkeypatch):
+    """Keep tests offline: default Unpaywall lookups to a plain miss."""
+    monkeypatch.setattr(UnpaywallAdapter, "_fetch_payload", lambda self, doi: {})
 
 
 @pytest.fixture(autouse=True)

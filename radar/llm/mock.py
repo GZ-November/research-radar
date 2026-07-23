@@ -19,7 +19,12 @@ class MockLLMClient:
         )
 
     def generate_structured(
-        self, *, stage: str, prompt: str, response_model: type[ResponseT]
+        self,
+        *,
+        stage: str,
+        prompt: str,
+        response_model: type[ResponseT],
+        max_tokens: int | None = None,
     ) -> ResponseT:
         if stage not in self.responses:
             raise LookupError(f"mock response missing for stage: {stage}")

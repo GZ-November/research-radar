@@ -3,12 +3,13 @@ services:
     build: .
     ports:
       - "8501:8501"
-    # SQLite 数据库和设置页保存的配置都落在 data/ 下，挂载后容器重建不丢。
+    # SQLite database and settings saved via the Settings page live under data/;
+    # mounting this volume preserves them across container rebuilds.
     volumes:
       - ./data:/app/data
     restart: unless-stopped
-    # 使用宿主机上的本地 Ollama（Mac / Windows）：
-    # 在应用「设置」页把 Ollama 地址填为 http://host.docker.internal:11434
-    # Linux 下需要额外取消下面两行的注释：
+    # To reach a local Ollama instance (macOS / Windows):
+    # set the Ollama base URL to http://host.docker.internal:11434 in the
+    # Settings page.  On Linux uncomment the two lines below:
     # extra_hosts:
     #   - "host.docker.internal:host-gateway"

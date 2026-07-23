@@ -26,12 +26,21 @@ class ProviderLLMClient:
         self.last_receipt: dict = {}
 
     def generate_structured(
-        self, *, stage: str, prompt: str, response_model: type[ResponseT]
+        self,
+        *,
+        stage: str,
+        prompt: str,
+        response_model: type[ResponseT],
+        max_tokens: int | None = None,
     ) -> ResponseT:
         if not all([self.settings.llm_api_key, self.settings.llm_model, self.settings.llm_base_url]):
             raise RuntimeError("llm_not_configured")
-        payload = self.build_payload(stage=stage, prompt=prompt, response_model=response_model)
+        payload = self.build_payload(
+            stage=stage, prompt=prompt, response_model=response_model,
+            max_tokens=max_tokens,
+        )
         last_error: Exception | None = None
+        budget_escalated = False
         for attempt in range(self.settings.llm_max_retries + 1):
             started = time.perf_counter()
             try:
@@ -44,6 +53,21 @@ class ProviderLLMClient:
                 response.raise_for_status()
                 body = response.json()
                 content = body["choices"][0]["message"]["content"]
+                finish_reason = body["choices"][0].get("finish_reason")
+                if (
+                    (not content or not content.strip())
+                    and finish_reason == "length"
+                    and not budget_escalated
+                ):
+                    # Reasoning models can burn the whole output budget on
+                    # hidden reasoning and return empty content; retry once
+                    # with a doubled cap instead of failing the stage.
+                    budget_escalated = True
+                    payload["max_tokens"] = min(
+                        int(payload.get("max_tokens", self.settings.llm_max_tokens)) * 2,
+                        32_768,
+                    )
+                    continue
                 usage = body.get("usage") or {}
                 self.last_receipt = {
                     "raw_response": content,
@@ -86,11 +110,17 @@ class ProviderLLMClient:
         raise RuntimeError(f"llm_provider_failed:{stage}: {last_error}") from last_error
 
     def build_payload(
-        self, *, stage: str, prompt: str, response_model: type[ResponseT]
+        self,
+        *,
+        stage: str,
+        prompt: str,
+        response_model: type[ResponseT],
+        max_tokens: int | None = None,
     ) -> dict:
         """Build a provider-specific Chat Completions request without sending it."""
 
         schema = response_model.model_json_schema()
+        token_cap = max_tokens or self.settings.llm_max_tokens
         provider = (self.settings.llm_provider or "").strip().lower()
         if provider.startswith("deepseek"):
             properties = ", ".join(schema.get("properties", {}).keys())
@@ -111,13 +141,14 @@ class ProviderLLMClient:
                 "response_format": {"type": "json_object"},
                 "thinking": {"type": self.settings.llm_thinking},
                 "reasoning_effort": self.settings.llm_reasoning_effort,
-                "max_tokens": self.settings.llm_max_tokens,
+                "max_tokens": token_cap,
                 "stream": False,
             }
 
         payload = {
             "model": self.settings.llm_model,
             "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": token_cap,
             "response_format": {
                 "type": "json_schema",
                 "json_schema": {

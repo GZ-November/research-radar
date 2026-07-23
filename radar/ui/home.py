@@ -7,7 +7,7 @@ from radar.db import session_scope
 from radar.models import Claim, ClaimRevision, ManuscriptVersion, ScanRun
 from radar.services.case_service import CaseService
 from radar.ui.components import empty_state, home_hero, page_header
-from radar.ui.upload_helpers import persist_uploaded_manuscript
+from radar.ui.upload_helpers import discard_uploaded_manuscript, persist_uploaded_manuscript
 
 
 def _is_sample_project(research_case) -> bool:
@@ -123,8 +123,10 @@ def render_home() -> None:
                 except ValueError as exc:
                     # create_case raises pre-translated Chinese validation
                     # messages (e.g. scanned PDF without a text layer).
+                    discard_uploaded_manuscript(upload_path)
                     st.error(str(exc))
                 except RuntimeError as exc:
+                    discard_uploaded_manuscript(upload_path)
                     st.error(f"项目创建失败：{exc}")
                 else:
                     st.session_state["_next_project_id"] = case_id

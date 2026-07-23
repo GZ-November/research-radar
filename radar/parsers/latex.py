@@ -4,7 +4,7 @@ import hashlib
 import re
 from pathlib import Path
 
-from radar.parsers.base import slugify
+from radar.parsers.base import sanitize_text, slugify
 from radar.schemas import ParsedBlock, ParsedDocument, ParsedSection
 
 
@@ -13,7 +13,7 @@ SECTION_PATTERN = re.compile(r"\\(?:section|subsection|subsubsection)\*?\{([^{}]
 
 class LatexParser:
     def parse(self, path: Path) -> ParsedDocument:
-        full_text = path.read_text(encoding="utf-8")
+        full_text = sanitize_text(path.read_text(encoding="utf-8"))
         matches = list(SECTION_PATTERN.finditer(full_text))
         sections: list[ParsedSection] = []
         if not matches:

@@ -1,3 +1,35 @@
+# =============================================================================
+# Stage 1 — Build React frontend
+# =============================================================================
+FROM node:22-alpine AS frontend-builder
+
+WORKDIR /src/app
+COPY app/package.json app/package-lock.json ./
+RUN npm ci
+
+COPY app/ ./
+RUN npm run build
+
+# =============================================================================
+# Stage 2 — Install Python dependencies
+# =============================================================================
+FROM python:3.13-slim AS python-deps
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+COPY pyproject.toml README.md ./
+COPY radar ./radar
+RUN pip install --no-cache-dir .
+
+# Copy built frontend into static directory
+COPY --from=frontend-builder /src/app/dist /app/static
+
+# =============================================================================
+# Stage 3 — Final runtime image
+# =============================================================================
 FROM python:3.13-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -5,16 +37,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Copy packaging metadata and sources first so dependency installation stays
-# cached unless the library code itself changes.
-COPY pyproject.toml README.md ./
-COPY radar ./radar
-RUN pip install --no-cache-dir .
+# Copy everything we installed and built from stage 2
+COPY --from=python-deps /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
+COPY --from=python-deps /usr/local/bin /usr/local/bin
+COPY --from=python-deps /app /app
 
-# Entrypoint changes often; keep it in a later layer than dependencies.
-COPY app.py ./
-COPY .streamlit ./.streamlit
+# Ensure uvicorn is available
+RUN pip install --no-cache-dir uvicorn
 
 EXPOSE 8501
 
-CMD ["streamlit", "run", "app.py", "--server.address=0.0.0.0", "--server.headless=true"]
+CMD ["uvicorn", "radar.api:app", "--host", "0.0.0.0", "--port", "8501"]

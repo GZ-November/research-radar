@@ -23,7 +23,7 @@ class StubLLM:
         self.response = response
         self.error = error
 
-    def generate_structured(self, *, stage, prompt, response_model):
+    def generate_structured(self, *, stage, prompt, response_model, max_tokens=None):
         if self.error is not None:
             raise self.error
         return response_model.model_validate(self.response)

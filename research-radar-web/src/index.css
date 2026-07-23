@@ -1,0 +1,110 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Kimi tokens（light）映射到 shadcn 变量 */
+    --background: 200 33% 98%;            /* color.background.groundPc #f9fbfc */
+    --foreground: 0 0% 5.9%;              /* labels.primary rgba(0,0,0,.9) */
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 5.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 5.9%;
+    --primary: 192 82% 31%;               /* 品牌深青 #0E7490 */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 97%;                /* fills.f1 */
+    --secondary-foreground: 0 0% 5.9%;
+    --muted: 0 0% 97%;
+    --muted-foreground: 0 0% 40%;         /* labels.secondary */
+    --accent: 192 82% 31%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 354 100% 61%;          /* color.status.danger #ff3849 */
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 87%;                   /* separator.s1 近似 */
+    --input: 0 0% 87%;
+    --ring: 214 100% 55%;                 /* color.status.kimiBlue #1783ff（focus-visible） */
+    --radius: 0.625rem;                   /* radius.md 10px */
+    --sidebar-background: 217 43% 9%;     /* #0D1420 */
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: 192 82% 31%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 0 0% 100%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 0 0% 100%;
+    --sidebar-ring: 214 100% 55%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  body {
+    @apply bg-ground text-lp;
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 20px;
+  }
+  /* focus-visible 统一用 kimiBlue */
+  :focus-visible {
+    outline: 2px solid #1783ff;
+    outline-offset: 2px;
+  }
+}
+
+@layer utilities {
+  .font-mono-radar {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  /* typography.webUI 字阶 */
+  .t-largeTitle { font-size: 20px; line-height: 30px; font-weight: 600; }
+  .t-t2 { font-size: 16px; line-height: 24px; font-weight: 400; }
+  .t-t2e { font-size: 16px; line-height: 24px; font-weight: 500; }
+  .t-b1 { font-size: 15px; line-height: 22px; font-weight: 400; }
+  .t-b1e { font-size: 15px; line-height: 22px; font-weight: 500; }
+  .t-b2 { font-size: 14px; line-height: 20px; font-weight: 400; }
+  .t-b2e { font-size: 14px; line-height: 20px; font-weight: 500; }
+  .t-c1 { font-size: 12px; line-height: 18px; font-weight: 400; }
+  .t-c1e { font-size: 12px; line-height: 18px; font-weight: 500; }
+  .t-c2 { font-size: 10px; line-height: 14px; font-weight: 400; }
+  .t-c2e { font-size: 10px; line-height: 14px; font-weight: 500; }
+  .clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+}
+
+/* 动画：遵守 animation.md — ease-out 曲线、短时长、只动 transform/opacity */
+@keyframes radar-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.55; transform: scale(0.86); }
+}
+.radar-pulse-dot {
+  animation: radar-pulse 1.2s cubic-bezier(0.23, 1, 0.32, 1) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* 细滚动条 */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.16);
+  border-radius: 8px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover { background-color: rgba(0, 0, 0, 0.28); }
+::-webkit-scrollbar-track { background: transparent; }

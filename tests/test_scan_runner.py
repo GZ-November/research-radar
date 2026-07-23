@@ -45,7 +45,7 @@ class OnePaperSearch:
 
 
 class ScriptedLLM:
-    def generate_structured(self, *, stage, prompt, response_model):
+    def generate_structured(self, *, stage, prompt, response_model, max_tokens=None):
         if stage == "incoming_result":
             return IncomingResult(
                 task="open-domain QA",

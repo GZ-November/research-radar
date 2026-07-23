@@ -21,7 +21,7 @@ class ProfileLLM:
             "latency_ms": 25,
         }
 
-    def generate_structured(self, *, stage, prompt, response_model):
+    def generate_structured(self, *, stage, prompt, response_model, max_tokens=None):
         assert stage == "manuscript_understanding"
         self.prompt = prompt
         return ManuscriptUnderstandingOutput(
@@ -106,7 +106,7 @@ class FlakyProfileLLM:
             "latency_ms": 25,
         }
 
-    def generate_structured(self, *, stage, prompt, response_model):
+    def generate_structured(self, *, stage, prompt, response_model, max_tokens=None):
         assert stage == "manuscript_understanding"
         self.prompts.append(prompt)
         key_count = 9 if len(self.prompts) == 1 else 10

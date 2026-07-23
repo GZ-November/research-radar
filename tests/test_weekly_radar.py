@@ -68,7 +68,7 @@ class ScriptedLLM:
         self.stages = []
         self.prompts = []
 
-    def generate_structured(self, *, stage, prompt, response_model):
+    def generate_structured(self, *, stage, prompt, response_model, max_tokens=None):
         self.stages.append(stage)
         self.prompts.append(prompt)
         if self.fail:
@@ -120,7 +120,7 @@ class ScriptedLLM:
 
 
 class NoChangeLLM(ScriptedLLM):
-    def generate_structured(self, *, stage, prompt, response_model):
+    def generate_structured(self, *, stage, prompt, response_model, max_tokens=None):
         if stage == "incoming_result":
             self.stages.append(stage)
             self.prompts.append(prompt)
@@ -270,8 +270,17 @@ def test_live_weekly_scan_creates_verified_candidate(
         assert impact.severity == "critical"
         assert impact.evidence_new_json["quote"] == INCOMING_QUOTE
         assert runs == 3
-    assert llm.stages == ["incoming_result", "impact_assessment", "action_advice"]
-    assert '"incoming_abstract"' in llm.prompts[0]
+    # HyDE, reference extraction and the LLM rerank are attempted first and
+    # degrade silently: the scripted double only implements the analysis stages.
+    assert llm.stages == [
+        "hyde_abstract",
+        "reference_extraction",
+        "retrieval_rerank",
+        "incoming_result",
+        "impact_assessment",
+        "action_advice",
+    ]
+    assert '"incoming_abstract"' in llm.prompts[3]
 
 
 def test_live_weekly_scan_records_llm_failure(db_session_factory, golden_case):
@@ -457,11 +466,13 @@ def test_remote_demo_selects_deepseek_and_sends_full_comparison_context(
         analysis_limit=1,
     )
 
-    assert '"own_full_manuscript_text"' not in llm.prompts[0]
-    assert OWN_QUOTE not in llm.prompts[0]
-    assert INCOMING_QUOTE in llm.prompts[0]
-    assert '"own_full_manuscript_text"' in llm.prompts[1]
-    assert '"incoming_public_paper_text"' in llm.prompts[1]
+    # prompts[0..2] are the degradable enhancement stages (HyDE, reference
+    # extraction, LLM rerank); the comparison context lives in [3] and [4].
+    assert '"own_full_manuscript_text"' not in llm.prompts[3]
+    assert OWN_QUOTE not in llm.prompts[3]
+    assert INCOMING_QUOTE in llm.prompts[3]
+    assert '"own_full_manuscript_text"' in llm.prompts[4]
+    assert '"incoming_public_paper_text"' in llm.prompts[4]
 
 
 def test_scan_progress_callback_reports_completion(db_session_factory, golden_case):
@@ -679,7 +690,7 @@ def test_public_pdf_enrichment_appends_version_label_once(
 class AdviceFailLLM(ScriptedLLM):
     """Analysis succeeds but the action-advice stage is unavailable."""
 
-    def generate_structured(self, *, stage, prompt, response_model):
+    def generate_structured(self, *, stage, prompt, response_model, max_tokens=None):
         if stage == "action_advice":
             self.stages.append(stage)
             self.prompts.append(prompt)

@@ -176,6 +176,41 @@ class SearchQueryBatch(BaseModel):
     queries: list[str] = Field(default_factory=list, max_length=5)
 
 
+class ExtractedReference(BaseModel):
+    """One bibliography entry parsed from a manuscript's references section."""
+
+    title: str
+    doi: str | None = None
+    year: int | None = None
+    authors: list[str] = Field(default_factory=list)
+
+
+class ExtractedReferenceBatch(BaseModel):
+    """LLM response wrapper: the model returns references as one JSON object."""
+
+    references: list[ExtractedReference] = Field(default_factory=list, max_length=15)
+
+
+class HydeAbstractOutput(BaseModel):
+    """Hypothetical relevant-paper abstract used as a search/ranking query."""
+
+    abstract: str
+
+
+class RerankCandidateScore(BaseModel):
+    """LLM relevance score for one retrieval-rerank candidate paper."""
+
+    key: str
+    score: float = Field(ge=0, le=10)
+    reason: str = ""
+
+
+class RerankBatchOutput(BaseModel):
+    """LLM response wrapper: relevance scores for one batch of candidates."""
+
+    scores: list[RerankCandidateScore] = Field(default_factory=list)
+
+
 class SourceRecord(BaseModel):
     external_id: str
     title: str
@@ -189,6 +224,7 @@ class SourceRecord(BaseModel):
     venue: str | None = None
     publication_type: Literal["preprint", "journal_article", "conference_paper", "other"] = "preprint"
     pdf_url: str | None = None
+    cited_by_count: int | None = None
 
 
 class TrustResult(BaseModel):

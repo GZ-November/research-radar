@@ -6,13 +6,14 @@ from pathlib import Path
 
 from pypdf import PdfReader
 
+from radar.parsers.base import sanitize_text
 from radar.schemas import ParsedBlock, ParsedDocument, ParsedSection
 
 
 class PdfFallbackParser:
     def parse(self, path: Path) -> ParsedDocument:
         reader = PdfReader(path)
-        pages = [(page.extract_text() or "").strip() for page in reader.pages]
+        pages = [sanitize_text(page.extract_text() or "").strip() for page in reader.pages]
         full_text = "\n\n".join(pages)
         sections = [
             ParsedSection(title=f"Page {page_no}", locator=f"page:{page_no}", text=text)

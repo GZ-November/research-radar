@@ -53,7 +53,11 @@ def start(
     either owned by this process or recorded in the database.
     """
 
+    global _threads
     with _lock:
+        # Purge finished worker threads so a long-lived process does not
+        # accumulate one dead Thread object per scan.
+        _threads = {sid: t for sid, t in _threads.items() if t.is_alive()}
         if case_id in _active_by_case:
             raise ScanAlreadyRunningError(
                 f"case already has a running scan: {case_id}"

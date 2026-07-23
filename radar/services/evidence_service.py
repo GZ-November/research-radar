@@ -15,6 +15,9 @@ RESULT_CUES = re.compile(
     r"robust|robustness|fragile|sensitive|score|scores)\b",
     re.IGNORECASE,
 )
+# Markdown decoration dropped during quote normalization: LLM quotes often
+# transcribe the plain words without the surrounding emphasis/heading marks.
+_MARKDOWN_DECORATIONS = "*_`#~"
 STOPWORDS = {
     "about", "after", "again", "against", "also", "among", "and", "are",
     "been", "being", "between", "compared", "consistently", "does", "each",
@@ -25,13 +28,18 @@ STOPWORDS = {
 
 
 def _normalized_text_with_offsets(text: str) -> tuple[str, list[int]]:
-    """Normalize PDF line wrapping while retaining exact source offsets."""
+    """Normalize PDF line wrapping while retaining exact source offsets.
+
+    Markdown decoration characters (emphasis, headings, code ticks) are
+    dropped so a quote transcribed without them still matches Markdown-based
+    manuscript text; offsets always point at real source characters.
+    """
     normalized: list[str] = []
     offsets: list[int] = []
     index = 0
     while index < len(text):
         char = text[index]
-        if char == "\x00":
+        if char == "\x00" or char in _MARKDOWN_DECORATIONS:
             index += 1
             continue
         if char == "-" and index + 1 < len(text) and text[index + 1] in "\r\n":

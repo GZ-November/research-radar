@@ -45,13 +45,14 @@ def _search_expression(query: str) -> str:
 class ArxivSearchAdapter:
     endpoint = "https://export.arxiv.org/api/query"
 
-    def __init__(self, cache_dir: Path, timeout_seconds: float = 20.0):
+    def __init__(self, cache_dir: Path, timeout_seconds: float = 40.0):
         self.cache_dir = Path(cache_dir)
         self.timeout_seconds = timeout_seconds
 
     @staticmethod
     def _get_with_retries(client: httpx.Client, url: str, **kwargs) -> httpx.Response:
-        """GET with exponential backoff on 429/5xx (at most MAX_RETRIES retries)."""
+        """GET with exponential backoff on 429/5xx and transient network
+        failures such as timeouts (at most MAX_RETRIES retries)."""
 
         delay = 1.0
         for attempt in range(MAX_RETRIES + 1):
@@ -62,6 +63,19 @@ class ArxivSearchAdapter:
             except httpx.HTTPStatusError as exc:
                 status = exc.response.status_code
                 if (status != 429 and status < 500) or attempt == MAX_RETRIES:
+                    raise
+                wait = delay
+                if status == 429:
+                    # arXiv throttles aggressively; honor Retry-After and use
+                    # a longer base backoff than for ordinary 5xx failures,
+                    # but never park the scan for more than two minutes.
+                    retry_after = exc.response.headers.get("Retry-After")
+                    wait = max(delay * 5, float(retry_after) if retry_after and retry_after.isdigit() else 0.0)
+                    wait = min(wait, 120.0)
+                time.sleep(wait)
+                delay *= 2
+            except (httpx.TimeoutException, httpx.TransportError):
+                if attempt == MAX_RETRIES:
                     raise
                 time.sleep(delay)
                 delay *= 2

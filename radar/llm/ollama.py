@@ -23,7 +23,12 @@ class OllamaLLMClient:
         self.last_receipt: dict = {}
 
     def generate_structured(
-        self, *, stage: str, prompt: str, response_model: type[ResponseT]
+        self,
+        *,
+        stage: str,
+        prompt: str,
+        response_model: type[ResponseT],
+        max_tokens: int | None = None,
     ) -> ResponseT:
         if not self.model_name or not self.settings.local_llm_base_url:
             raise RuntimeError("local_llm_not_configured")
@@ -45,7 +50,7 @@ class OllamaLLMClient:
             "options": {
                 "temperature": 0,
                 "num_ctx": 32_768,
-                "num_predict": 2_048,
+                "num_predict": max_tokens or 2_048,
             },
         }
         last_error: Exception | None = None

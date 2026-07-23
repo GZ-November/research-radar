@@ -10,7 +10,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from radar.config import get_settings
-from radar.db import Base, SessionLocal, init_database, session_scope
+from radar.db import SessionLocal, init_database, session_scope
 from radar.models import (
     ActionItem, AuditEvent, Claim, ClaimRevision, ClaimSourceLink, ClaimSurface, ImpactCandidate,
     ManuscriptVersion, ModelRun, PatchProposal, ResearchCase, ReviewDecision, ScanRun,

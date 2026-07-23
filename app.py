@@ -17,7 +17,6 @@ from radar.ui.components import (
     render_pending_confirmation,
     sidebar_brand,
     sidebar_section,
-    sidebar_status_row,
 )
 from radar.ui.home import render_home
 from radar.ui.impact_page import render_impact_page
@@ -120,18 +119,13 @@ def main() -> None:
     sidebar_section("导航")
     page = st.sidebar.radio("导航", PAGES, key="navigation", label_visibility="collapsed")
 
-    settings = get_settings()
-    llm_setup = describe_llm_setup(settings)
-    sidebar_section("系统状态")
-    if llm_setup["configured"]:
-        mode_label = "本地" if llm_setup["mode"] == "local" else "远程"
-        sidebar_status_row("分析模型", f"`{llm_setup['model']}` · {mode_label}")
-    else:
-        sidebar_status_row("分析模型", "未配置", ok=False)
-    if settings.embedding_provider and settings.embedding_model:
-        sidebar_status_row("向量模型", f"`{settings.embedding_model}`")
-    else:
-        sidebar_status_row("向量模型", "未配置 · 退化为关键词检索", ok=False)
+    # No per-model technical status in the sidebar; only surface setup when
+    # action is required, and point to the settings page instead of jargon.
+    if not describe_llm_setup(get_settings())["configured"]:
+        st.sidebar.warning("分析模型未配置")
+        if st.sidebar.button("前往设置", key="sidebar-goto-settings", width="stretch"):
+            st.session_state["_next_navigation"] = "设置"
+            st.rerun()
 
     render_pending_confirmation()
 
