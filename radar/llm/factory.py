@@ -41,10 +41,9 @@ def build_analysis_llm(
 def describe_llm_setup(settings: Settings | None = None) -> dict:
     """Describe the active analysis-LLM configuration for UI guidance.
 
-    Returns ``{"configured", "mode", "model", "missing"}`` where ``mode`` is
-    "local", "remote" or None. When nothing is configured, ``missing`` lists
-    the absent remote env vars; setting ``LOCAL_LLM_MODEL`` is the documented
-    local alternative.
+    Returns ``{"configured", "mode", "model", "missing", "provider", "base_url"}``
+    where ``mode`` is "local", "remote" or None. Local Ollama remains the
+    documented privacy-first override and therefore wins over remote settings.
     """
 
     settings = settings or get_settings()
@@ -53,6 +52,8 @@ def describe_llm_setup(settings: Settings | None = None) -> dict:
             "configured": True,
             "mode": "local",
             "model": settings.local_llm_model,
+            "provider": "ollama",
+            "base_url": settings.local_llm_base_url,
             "missing": [],
         }
     missing = [
@@ -60,11 +61,12 @@ def describe_llm_setup(settings: Settings | None = None) -> dict:
         for field, env_name in REMOTE_REQUIRED_FIELDS.items()
         if not getattr(settings, field)
     ]
-    if not missing:
-        return {
-            "configured": True,
-            "mode": "remote",
-            "model": settings.llm_model,
-            "missing": [],
-        }
-    return {"configured": False, "mode": None, "model": None, "missing": missing}
+    configured = len(missing) == 0
+    return {
+        "configured": configured,
+        "mode": "remote" if configured else None,
+        "model": settings.llm_model if configured else None,
+        "provider": settings.llm_provider or "",
+        "base_url": settings.llm_base_url or "",
+        "missing": missing,
+    }

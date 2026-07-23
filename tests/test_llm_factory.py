@@ -51,6 +51,8 @@ def test_describe_setup_local():
         "configured": True,
         "mode": "local",
         "model": "qwen3:4b",
+        "provider": "ollama",
+        "base_url": "http://127.0.0.1:11434",
         "missing": [],
     }
 

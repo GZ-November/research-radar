@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
-import { verdictMeta, claimStatusMeta, kindMeta, matrixStatusMeta, type Paper, type Claim, type ActionItem } from '../data/mock';
+import { verdictMeta, claimStatusMeta, kindMeta, matrixStatusMeta } from '../data/mock';
 import { Reveal, Stat, Tabs, Quote, Priority, Empty } from '../components/chrome';
 import { Spinner } from '../components/ui/spinner';
+import { useProjectId } from '../contexts/ProjectContext';
 import {
   getActions,
   getImpacts,
@@ -14,7 +15,15 @@ import {
 
 type ActionState = 'todo' | 'doing' | 'done' | 'dismissed';
 
-export default function Actions({ caseId }: { caseId: string }) {
+function persistedActionState(status: string | undefined): ActionState {
+  if (status === 'in_progress') return 'doing';
+  if (status === 'done') return 'done';
+  if (status === 'dismissed') return 'dismissed';
+  return 'todo';
+}
+
+export default function Actions() {
+  const caseId = useProjectId();
   // ---- data fetching ----
   const { data: actions, loading: actionsLoading, refetch: refetchActions } = useApi(
     () => getActions(caseId),
@@ -24,7 +33,7 @@ export default function Actions({ caseId }: { caseId: string }) {
     () => getImpacts(caseId),
     [caseId],
   );
-  const { data: claims, loading: claimsLoading, refetch: refetchClaims } = useApi(
+  const { data: claims, loading: claimsLoading } = useApi(
     () => getClaims(caseId),
     [caseId],
   );
@@ -38,17 +47,51 @@ export default function Actions({ caseId }: { caseId: string }) {
   const [expandedActionId, setExpandedActionId] = useState<string | null>(null);
   const [expandedImpactId, setExpandedImpactId] = useState<string | null>(null);
   const [expandedClaimId, setExpandedClaimId] = useState<string | null>(null);
+  const [operationError, setOperationError] = useState('');
 
   // ---- derived ----
   const p0 = useMemo(() => {
     if (!actions) return undefined;
-    return actions.find((a) => a.priority === 'P0' && (states[a.id] ?? 'todo') !== 'done');
+    return actions.find(
+      (a) =>
+        a.priority === 'P0'
+        && (states[a.id] ?? persistedActionState(a.status)) !== 'done',
+    );
   }, [actions, states]);
 
   const useful = (papers ?? []).filter((p) => p.verdict !== 'none');
   const affected = (claims ?? []).filter((c) => c.status === 'disputed' || c.status === 'revalidate');
 
   const setA = (id: string, s: ActionState) => setStates((m) => ({ ...m, [id]: s }));
+
+  const persistAction = async (
+    id: string,
+    previous: ActionState,
+    next: ActionState,
+    apiStatus: string,
+  ) => {
+    setOperationError('');
+    setA(id, next);
+    try {
+      await updateActionStatus(caseId, id, apiStatus);
+      refetchActions();
+    } catch (e) {
+      setA(id, previous);
+      setOperationError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const persistImpact = async (id: string, decision: 'adopted' | 'rejected') => {
+    setOperationError('');
+    try {
+      if (decision === 'adopted') await confirmImpact(caseId, id);
+      else await dismissImpact(caseId, id);
+      setDecisions((current) => ({ ...current, [id]: decision }));
+      refetchImpacts();
+    } catch (e) {
+      setOperationError(e instanceof Error ? e.message : String(e));
+    }
+  };
 
   // ---- metrics (computed from loaded actions) ----
   const list = actions ?? [];
@@ -126,6 +169,11 @@ export default function Actions({ caseId }: { caseId: string }) {
       </Reveal>
 
       <div className="mt-8">
+        {operationError && (
+          <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {operationError}
+          </div>
+        )}
         <Tabs tabs={['你要做什么', '文献判断', '受影响的主张']} active={tab} onChange={setTab} />
 
         {/* tab 0 — actions */}
@@ -133,7 +181,7 @@ export default function Actions({ caseId }: { caseId: string }) {
           <div className="grid gap-4">
             {list.length === 0 && <Empty text="暂无扫描结果，去文献雷达搜一下" />}
             {list.map((a, i) => {
-              const st = states[a.id] ?? 'todo';
+              const st = states[a.id] ?? persistedActionState(a.status);
               const src = findPaper(a.sourcePaperId);
               const isExpanded = expandedActionId === a.id;
               if (st === 'dismissed') return null;
@@ -173,13 +221,7 @@ export default function Actions({ caseId }: { caseId: string }) {
                       {st === 'todo' && (
                         <button
                           className="btn-dark"
-                          onClick={async () => {
-                            setA(a.id, 'doing');
-                            try {
-                              await updateActionStatus(caseId, a.id, 'in_progress');
-                              refetchActions();
-                            } catch { /* keep local state */ }
-                          }}
+                          onClick={() => void persistAction(a.id, st, 'doing', 'in_progress')}
                         >
                           开始
                         </button>
@@ -187,13 +229,7 @@ export default function Actions({ caseId }: { caseId: string }) {
                       {st !== 'done' && (
                         <button
                           className="btn-teal"
-                          onClick={async () => {
-                            setA(a.id, 'done');
-                            try {
-                              await updateActionStatus(caseId, a.id, 'done');
-                              refetchActions();
-                            } catch { /* keep local state */ }
-                          }}
+                          onClick={() => void persistAction(a.id, st, 'done', 'done')}
                         >
                           完成
                         </button>
@@ -201,13 +237,7 @@ export default function Actions({ caseId }: { caseId: string }) {
                       {st !== 'done' && (
                         <button
                           className="btn-quiet"
-                          onClick={async () => {
-                            setA(a.id, 'dismissed');
-                            try {
-                              await updateActionStatus(caseId, a.id, 'dismissed');
-                              refetchActions();
-                            } catch { /* keep local state */ }
-                          }}
+                          onClick={() => void persistAction(a.id, st, 'dismissed', 'dismissed')}
                         >
                           不处理
                         </button>
@@ -226,7 +256,12 @@ export default function Actions({ caseId }: { caseId: string }) {
           <div className="grid gap-4">
             {useful.length === 0 && <Empty text="暂无文献判断结果" />}
             {useful.map((p, i) => {
-              const d = decisions[p.id];
+              const d = decisions[p.id]
+                ?? (p.reviewState === 'confirmed'
+                  ? 'adopted'
+                  : p.reviewState === 'dismissed'
+                    ? 'rejected'
+                    : undefined);
               const isExpanded = expandedImpactId === p.id;
               return (
                 <Reveal key={p.id} delay={i * 60}>
@@ -315,25 +350,13 @@ export default function Actions({ caseId }: { caseId: string }) {
                         <>
                           <button
                             className="btn-teal"
-                            onClick={async () => {
-                              setDecisions((m) => ({ ...m, [p.id]: 'adopted' }));
-                              try {
-                                await confirmImpact(caseId, p.id);
-                                refetchImpacts();
-                              } catch { /* keep local state */ }
-                            }}
+                            onClick={() => void persistImpact(p.id, 'adopted')}
                           >
                             采用这项影响
                           </button>
                           <button
                             className="btn-quiet"
-                            onClick={async () => {
-                              setDecisions((m) => ({ ...m, [p.id]: 'rejected' }));
-                              try {
-                                await dismissImpact(caseId, p.id);
-                                refetchImpacts();
-                              } catch { /* keep local state */ }
-                            }}
+                            onClick={() => void persistImpact(p.id, 'rejected')}
                           >
                             不采用
                           </button>

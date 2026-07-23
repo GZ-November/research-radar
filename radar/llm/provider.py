@@ -63,8 +63,13 @@ class ProviderLLMClient:
                     # hidden reasoning and return empty content; retry once
                     # with a doubled cap instead of failing the stage.
                     budget_escalated = True
-                    payload["max_tokens"] = min(
-                        int(payload.get("max_tokens", self.settings.llm_max_tokens)) * 2,
+                    token_key = (
+                        "max_completion_tokens"
+                        if "max_completion_tokens" in payload
+                        else "max_tokens"
+                    )
+                    payload[token_key] = min(
+                        int(payload.get(token_key, self.settings.llm_max_tokens)) * 2,
                         32_768,
                     )
                     continue
@@ -121,6 +126,7 @@ class ProviderLLMClient:
 
         schema = response_model.model_json_schema()
         token_cap = max_tokens or self.settings.llm_max_tokens
+        effective_model = self.settings.llm_model
         provider = (self.settings.llm_provider or "").strip().lower()
         if provider.startswith("deepseek"):
             properties = ", ".join(schema.get("properties", {}).keys())
@@ -131,7 +137,7 @@ class ProviderLLMClient:
                 f"JSON Schema:\n{json.dumps(schema, ensure_ascii=False)}"
             )
             return {
-                "model": self.settings.llm_model,
+                "model": effective_model,
                 "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt},
@@ -146,9 +152,8 @@ class ProviderLLMClient:
             }
 
         payload = {
-            "model": self.settings.llm_model,
+            "model": effective_model,
             "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": token_cap,
             "response_format": {
                 "type": "json_schema",
                 "json_schema": {
@@ -158,4 +163,12 @@ class ProviderLLMClient:
                 },
             },
         }
+        if provider == "openai":
+            # Current OpenAI reasoning models use max_completion_tokens;
+            # max_tokens is deprecated and rejected by some model families.
+            payload["max_completion_tokens"] = token_cap
+            payload["reasoning_effort"] = self.settings.llm_reasoning_effort
+        else:
+            # Preserve broad OpenAI-compatible endpoint compatibility.
+            payload["max_tokens"] = token_cap
         return payload

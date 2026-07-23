@@ -12,7 +12,9 @@ cd research-radar
 docker compose up -d --build
 ```
 
-打开 **http://localhost:8501**，在设置页填入你的 LLM API Key（远程 OpenAI-compatible 或本地 Ollama），保存即生效。数据库和设置保存在 `./data` 目录，容器重建不丢失。
+打开 **http://localhost:8501**，在设置页选择 DeepSeek、OpenAI、任意
+OpenAI-compatible 服务或本地 Ollama，填入 API Key 后点击“保存并检测连接”。
+数据库和设置保存在 `./data` 目录，容器重建不丢失。
 
 ### 使用流程
 
@@ -32,11 +34,17 @@ docker compose up -d --build
 # 远程 API（DeepSeek / OpenAI / 任意 OpenAI-compatible）
 LLM_PROVIDER=deepseek
 LLM_API_KEY=sk-你的密钥
-LLM_MODEL=deepseek-chat
+LLM_MODEL=deepseek-v4-flash
 LLM_BASE_URL=https://api.deepseek.com
 ```
 
-配了 `LOCAL_LLM_MODEL` 则优先走本地 Ollama，全文不出本机。详见 `.env.example`。
+默认推荐 DeepSeek V4 Flash；质量优先可切换 V4 Pro。OpenAI 默认推荐
+GPT-5.6 Terra，最复杂的分析可选 Sol，高吞吐轻量任务可选 Luna。模型 ID
+也可以直接输入，设置页不会把兼容服务限制在内置列表中。
+
+配了 `LOCAL_LLM_MODEL` 则优先走本地 Ollama，全文不出本机。分析模型与
+embedding 模型相互独立；DeepSeek 的分析接口不能当作 OpenAI embedding
+接口使用。详见 `.env.example`。
 
 ### 可选增强
 
@@ -59,7 +67,7 @@ cd app && npm install && npm run dev
 ## 测试
 
 ```bash
-pytest                          # ~226 个测试
+python -m pytest                # 232 个测试
 python scripts/verify_live_stack.py  # 真实端到端验证（arXiv + LLM）
 ```
 

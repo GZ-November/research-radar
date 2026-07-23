@@ -63,7 +63,7 @@ export default function RadarCanvas({ className = '' }: { className?: string }) 
     const CY = () => h * 0.62;
     const R = () => Math.max(w, h) * 0.55;
 
-    let t0 = performance.now();
+    const t0 = performance.now();
     const draw = (now: number) => {
       const t = (now - t0) / 1000;
       ctx.clearRect(0, 0, w, h);

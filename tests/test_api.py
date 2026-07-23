@@ -1,6 +1,7 @@
 """Smoke tests for the FastAPI application — uses TestClient and a temp DB."""
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from starlette.testclient import TestClient
@@ -103,6 +104,39 @@ def test_create_and_get_case(api_client, tmp_path):
     assert "actions" in project
 
 
+def test_delete_case_removes_it_from_the_workspace(api_client, tmp_path):
+    case_id = _create_case(api_client, tmp_path, "Delete Test")
+
+    deleted = api_client.delete(f"/api/cases/{case_id}")
+
+    assert deleted.status_code == 200
+    assert deleted.json()["deleted"] == case_id
+    assert api_client.get(f"/api/cases/{case_id}").status_code == 404
+    assert all(item["id"] != case_id for item in api_client.get("/api/cases").json())
+
+
+def test_legacy_impact_review_state_does_not_break_project_response(api_client):
+    import radar.api as api_module
+
+    legacy = SimpleNamespace(
+        id="legacy-impact",
+        source_snapshot_id="missing-snapshot",
+        claim_revision_id="missing-revision",
+        condition_differences_json=[],
+        evidence_new_json={},
+        evidence_own_json={},
+        suggested_action="monitor",
+        uncertainty_json=[],
+        stance="neutral",
+        severity="informative",
+        review_state="informative",
+    )
+
+    paper = api_module._impact_to_paper_out(legacy)
+
+    assert paper.reviewState == "candidate"
+
+
 # ---------------------------------------------------------------------------
 # Claims
 # ---------------------------------------------------------------------------
@@ -183,6 +217,26 @@ def test_get_settings(api_client):
     assert "pdf_parser_backend" in data
 
 
+def test_openai_embedding_is_not_configured_without_its_own_key(
+    api_client, monkeypatch
+):
+    from radar.config import Settings
+
+    settings = Settings(
+        _env_file=None,
+        embedding_provider="openai",
+        embedding_model="text-embedding-3-small",
+        embedding_base_url="https://api.openai.com/v1",
+        embedding_api_key=None,
+    )
+    monkeypatch.setattr("radar.api.get_settings", lambda: settings)
+
+    resp = api_client.get("/api/settings")
+
+    assert resp.status_code == 200
+    assert resp.json()["embedding"]["configured"] is False
+
+
 def test_put_settings(api_client, tmp_path, monkeypatch):
     """Write a settings key and verify it was saved."""
     # Redirect save_local_settings to a temp file
@@ -201,6 +255,36 @@ def test_put_settings(api_client, tmp_path, monkeypatch):
     resp = api_client.put("/api/settings", json={"updates": {"LLM_MODEL": "test-model"}})
     assert resp.status_code == 200
     assert "test-model" in target.read_text()
+
+
+def test_put_settings_never_persists_secret_sentinel(api_client, tmp_path, monkeypatch):
+    target = tmp_path / "settings.local.env"
+    monkeypatch.setattr("radar.config.LOCAL_SETTINGS_FILE", target)
+    monkeypatch.setattr(
+        "radar.api.save_local_settings",
+        lambda updates, path=None: __import__("radar.config").config.save_local_settings(
+            updates, path=target
+        ),
+    )
+
+    resp = api_client.put(
+        "/api/settings",
+        json={"updates": {"LLM_API_KEY": "__keep__", "LLM_MODEL": "safe-model"}},
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["saved"] == ["LLM_MODEL"]
+    assert "__keep__" not in target.read_text()
+
+
+def test_put_settings_rejects_unknown_keys(api_client):
+    resp = api_client.put(
+        "/api/settings",
+        json={"updates": {"UNSUPPORTED_SECRET": "should-not-be-written"}},
+    )
+
+    assert resp.status_code == 400
+    assert "unsupported settings keys" in resp.json()["detail"]
 
 
 # ---------------------------------------------------------------------------

@@ -1,6 +1,7 @@
 // ---------- Research Radar API client ----------
-// All functions try the live API first; on failure they fall back to mock data.
-// Types are re-exported from ../data/mock so the rest of the app stays compatible.
+// Requests fail explicitly so the UI never presents mock records as real user
+// data. Types are re-exported from ../data/mock while the design data is split
+// out incrementally.
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import {
@@ -11,7 +12,6 @@ import {
   type VersionRec,
   type AuditRec,
   type MatrixRow,
-  projects,
 } from './data/mock';
 
 // Types defined inline in mock.ts but not exported — derive them from the
@@ -47,7 +47,10 @@ export interface ScanStatus {
   status: string;
   started_at: string;
   finished_at: string | null;
-  progress: Record<string, number>;
+  progress: {
+    value?: number;
+    message?: string;
+  };
   stats: Record<string, unknown>;
   error_message: string | null;
 }
@@ -55,22 +58,27 @@ export interface ScanStatus {
 export interface SettingsData {
   llm: {
     configured: boolean;
-    mode: string;
-    model: string;
+    mode: 'local' | 'remote' | null;
+    model: string | null;
     missing: string[];
     provider: string;
     base_url: string;
+    has_api_key: boolean;
+    thinking: 'enabled' | 'disabled';
+    reasoning_effort: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
   };
   embedding: {
     configured: boolean;
     model: string;
     provider: string;
     base_url: string;
+    has_api_key: boolean;
   };
   local_llm: {
     model: string;
     base_url: string;
   };
+  model_catalog: Record<string, { id: string; label: string }[]>;
   pdf_parser_backend: string;
 }
 
@@ -93,7 +101,14 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   const res = await fetch(`${BASE_URL}${path}`, opts);
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    throw new Error(`API ${method} ${path} ${res.status}: ${text}`);
+    let detail = text;
+    try {
+      const parsed = JSON.parse(text) as { detail?: unknown };
+      if (typeof parsed.detail === 'string') detail = parsed.detail;
+    } catch {
+      // Keep the original response text when it is not JSON.
+    }
+    throw new Error(detail || `请求失败（HTTP ${res.status}）`);
   }
   return res.json() as Promise<T>;
 }
@@ -146,6 +161,11 @@ export async function uploadManuscript(caseId: string, file: File): Promise<Reco
   const fd = new FormData();
   fd.append('manuscript', file);
   return post<Record<string, unknown>>(`/cases/${caseId}/upload`, fd);
+}
+
+/** Permanently delete a research case and all associated data. */
+export async function deleteCase(caseId: string): Promise<{ deleted: string; title: string }> {
+  return del<{ deleted: string; title: string }>(`/cases/${caseId}`);
 }
 
 // -- Claims ----------------------------------------------------------------
@@ -247,10 +267,10 @@ export async function updateActionStatus(
 export async function generatePatch(
   caseId: string,
   impactId: string,
-): Promise<{ claimId: string; loc: string; before: string; after: string; checks: { label: string; ok: boolean }[] }> {
+): Promise<{ patchId: string; claimId: string; loc: string; before: string; after: string; checks: { label: string; ok: boolean }[] }> {
   const fd = new FormData();
   fd.append('impact_id', impactId);
-  return post<{ claimId: string; loc: string; before: string; after: string; checks: { label: string; ok: boolean }[] }>(
+  return post<{ patchId: string; claimId: string; loc: string; before: string; after: string; checks: { label: string; ok: boolean }[] }>(
     `/cases/${caseId}/patches`,
     fd,
   );
@@ -321,6 +341,22 @@ export async function putSettings(updates: Record<string, string>): Promise<{ sa
   return put<{ saved: string[] }>('/settings', { updates });
 }
 
+export async function testSettings(): Promise<{
+  ok: boolean;
+  mode: 'local' | 'remote';
+  provider: string;
+  model: string;
+  available_models: string[];
+}> {
+  return post<{
+    ok: boolean;
+    mode: 'local' | 'remote';
+    provider: string;
+    model: string;
+    available_models: string[];
+  }>('/settings/test');
+}
+
 // ---------------------------------------------------------------------------
 // useApi hook — generic data fetcher with loading / error state
 // ---------------------------------------------------------------------------
@@ -370,27 +406,4 @@ export function useApi<T>(fetcher: () => Promise<T>, deps: unknown[] = []): UseA
   }, deps);
 
   return { data, loading, error, refetch: execute };
-}
-
-// ---------------------------------------------------------------------------
-// Fallback helpers — wrap any API call so it degrades to mock data on failure
-// ---------------------------------------------------------------------------
-
-/** Try the API; on failure return the fallback value. */
-export async function apiOrFallback<T>(apiFn: () => Promise<T>, fallback: T): Promise<T> {
-  try {
-    return await apiFn();
-  } catch {
-    return fallback;
-  }
-}
-
-/** Return the mock project list (used as default fallback). */
-export function getMockProjects(): Project[] {
-  return projects;
-}
-
-/** Return a mock single project by id. */
-export function getMockProject(id: string): Project | undefined {
-  return projects.find((p) => p.id === id);
 }

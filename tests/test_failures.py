@@ -60,6 +60,26 @@ def test_generic_provider_keeps_strict_json_schema():
     assert payload["response_format"]["json_schema"]["strict"] is True
 
 
+def test_openai_provider_uses_reasoning_model_token_fields():
+    settings = Settings(
+        _env_file=None,
+        llm_provider="openai",
+        llm_api_key="test-key",
+        llm_model="gpt-5.6-terra",
+        llm_base_url="https://api.openai.com/v1",
+        llm_reasoning_effort="medium",
+    )
+
+    payload = ProviderLLMClient(settings).build_payload(
+        stage="evidence", prompt="Return evidence.", response_model=EvidenceSpan
+    )
+
+    assert payload["model"] == "gpt-5.6-terra"
+    assert payload["max_completion_tokens"] == 4096
+    assert payload["reasoning_effort"] == "medium"
+    assert "max_tokens" not in payload
+
+
 def test_provider_retries_transient_503(monkeypatch):
     settings = Settings(
         _env_file=None,

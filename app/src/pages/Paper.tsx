@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { claimStatusMeta, type Project, type Claim, type VersionRec } from '../data/mock';
+import { claimStatusMeta, type Claim, type VersionRec } from '../data/mock';
 import { Reveal, Stat, Tabs, Quote, Empty } from '../components/chrome';
+import { useProject } from '../contexts/ProjectContext';
 import {
   useApi,
-  getCaseDetail,
   getProfile,
   analyzeProfile,
   getCompetitors,
@@ -36,29 +36,34 @@ const CONTRACT_LABELS: [string, keyof Claim['contract']][] = [
 
 // ---------- Paper page ----------
 
-export default function Paper({ caseId }: { caseId: string }) {
+export default function Paper() {
+  const {
+    project,
+    loading: projectLoading,
+    error: projectError,
+    projectId,
+    refreshProject,
+  } = useProject();
   const [tab, setTab] = useState(0);
 
   // ---- data hooks ----
-
-  const { data: project, loading: projectLoading, error: projectError } = useApi(
-    () => getCaseDetail(caseId),
-    [caseId],
-  );
 
   const {
     data: profile,
     loading: profileLoading,
     error: profileError,
     refetch: refetchProfile,
-  } = useApi(() => getProfile(caseId), [caseId]);
+  } = useApi(() => getProfile(projectId), [projectId]);
 
   const {
     data: competitors,
     loading: competitorsLoading,
     error: competitorsError,
     refetch: refetchCompetitors,
-  } = useApi(() => getCompetitors(caseId), [caseId]);
+  } = useApi(
+    () => getCompetitors(projectId),
+    [projectId],
+  );
 
   // ---- local state ----
 
@@ -87,12 +92,12 @@ export default function Paper({ caseId }: { caseId: string }) {
   const handleConfirm = async (revId: string) => {
     try {
       setActionError(null);
-      const updated = await confirmClaim(caseId, revId);
+      const updated = await confirmClaim(projectId, revId);
       setConfirm((m) => ({ ...m, [revId]: 'yes' }));
-      // merge API response into confirm state
       if (updated.confirmed === 'yes') {
         setConfirm((m) => ({ ...m, [revId]: 'yes' }));
       }
+      await refreshProject();
     } catch (e) {
       setActionError(e instanceof Error ? e.message : '确认失败');
     }
@@ -101,8 +106,9 @@ export default function Paper({ caseId }: { caseId: string }) {
   const handleReject = async (revId: string) => {
     try {
       setActionError(null);
-      const updated = await rejectClaim(caseId, revId);
+      await rejectClaim(projectId, revId);
       setConfirm((m) => ({ ...m, [revId]: 'no' }));
+      await refreshProject();
     } catch (e) {
       setActionError(e instanceof Error ? e.message : '拒绝失败');
     }
@@ -111,7 +117,8 @@ export default function Paper({ caseId }: { caseId: string }) {
   const handleEdit = async (revId: string, body: { statement?: string }) => {
     try {
       setActionError(null);
-      await editClaim(caseId, revId, body);
+      await editClaim(projectId, revId, body);
+      await refreshProject();
     } catch (e) {
       setActionError(e instanceof Error ? e.message : '编辑失败');
     }
@@ -122,7 +129,8 @@ export default function Paper({ caseId }: { caseId: string }) {
     if (!file) return;
     try {
       setActionError(null);
-      await uploadManuscript(caseId, file);
+      await uploadManuscript(projectId, file);
+      await refreshProject();
       setSynced(true);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : '上传失败');
@@ -135,7 +143,7 @@ export default function Paper({ caseId }: { caseId: string }) {
     try {
       setActionError(null);
       await addCompetitor(
-        caseId,
+        projectId,
         team.trim(),
         alias.split(/[,，]/).map((s) => s.trim()).filter(Boolean),
       );
@@ -151,7 +159,7 @@ export default function Paper({ caseId }: { caseId: string }) {
     const watchId = item.id ?? item.team;
     try {
       setActionError(null);
-      await removeCompetitor(caseId, watchId);
+      await removeCompetitor(projectId, watchId);
       refetchCompetitors();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : '移除监控失败');
@@ -161,7 +169,7 @@ export default function Paper({ caseId }: { caseId: string }) {
   const handleReanalyze = async () => {
     try {
       setActionError(null);
-      await analyzeProfile(caseId);
+      await analyzeProfile(projectId);
       refetchProfile();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : '重新分析失败');

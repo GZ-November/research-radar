@@ -59,6 +59,7 @@ class ProjectProfile(BaseModel):
 
 
 class RewriteView(BaseModel):
+    patchId: str = ""
     claimId: str = ""
     before: str = ""
     after: str = ""
@@ -106,6 +107,7 @@ class PaperOut(BaseModel):
     why: str = ""
     suggestion: str = ""
     uncertainty: str = ""
+    reviewState: Literal["candidate", "edited", "confirmed", "dismissed"] = "candidate"
 
 
 class ActionItemOut(BaseModel):
@@ -121,6 +123,7 @@ class ActionItemOut(BaseModel):
     sourcePaperId: str = ""
     reason: str = ""
     checklist: list[str] = Field(default_factory=list)
+    status: Literal["proposed", "open", "in_progress", "done", "dismissed"] = "proposed"
 
 
 class VersionRecOut(BaseModel):
@@ -221,8 +224,8 @@ class ActionStatusRequest(BaseModel):
 
 
 class ScanStartRequest(BaseModel):
-    max_results: int = 32
-    analysis_limit: int = 3
+    max_results: int = Field(default=32, ge=1, le=100)
+    analysis_limit: int = Field(default=3, ge=1, le=20)
 
 
 class CompetitorRequest(BaseModel):

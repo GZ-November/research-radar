@@ -408,6 +408,52 @@ class CaseService:
             **sync,
         }
 
+    def delete_case(self, case_id: str) -> None:
+        """Permanently delete a case and all its associated data."""
+        with session_scope(self.session_factory) as session:
+            active_scan = session.scalar(
+                select(ScanRun.id).where(
+                    ScanRun.case_id == case_id,
+                    ScanRun.status.in_(["running", "cancel_requested"]),
+                )
+            )
+            if active_scan is not None:
+                raise RuntimeError("case_scan_active")
+            scan_ids = list(session.scalars(select(ScanRun.id).where(ScanRun.case_id == case_id)))
+            impact_ids = list(
+                session.scalars(select(ImpactCandidate.id).where(ImpactCandidate.scan_run_id.in_(scan_ids)))
+            ) if scan_ids else []
+            claim_ids = list(session.scalars(select(Claim.id).where(Claim.case_id == case_id)))
+            revision_ids = list(
+                session.scalars(select(ClaimRevision.id).where(ClaimRevision.claim_id.in_(claim_ids)))
+            ) if claim_ids else []
+            manuscript_ids = list(
+                session.scalars(select(ManuscriptVersion.id).where(ManuscriptVersion.case_id == case_id))
+            )
+            # Delete case-owned leaf rows before the entities they reference.
+            session.execute(delete(ActionItem).where(ActionItem.case_id == case_id))
+            session.execute(delete(PatchProposal).where(PatchProposal.case_id == case_id))
+            if impact_ids:
+                session.execute(delete(ReviewDecision).where(ReviewDecision.impact_candidate_id.in_(impact_ids)))
+                session.execute(delete(ImpactCandidate).where(ImpactCandidate.id.in_(impact_ids)))
+            model_run_filter = ModelRun.case_id == case_id
+            if scan_ids:
+                model_run_filter = model_run_filter | ModelRun.scan_run_id.in_(scan_ids)
+            session.execute(delete(ModelRun).where(model_run_filter))
+            if scan_ids:
+                session.execute(delete(ScanRun).where(ScanRun.id.in_(scan_ids)))
+            if revision_ids:
+                session.execute(delete(ClaimSourceLink).where(ClaimSourceLink.claim_revision_id.in_(revision_ids)))
+                session.execute(delete(ClaimSurface).where(ClaimSurface.claim_revision_id.in_(revision_ids)))
+                session.execute(delete(ClaimRevision).where(ClaimRevision.id.in_(revision_ids)))
+            if claim_ids:
+                session.execute(delete(Claim).where(Claim.id.in_(claim_ids)))
+            session.execute(delete(WatchEntity).where(WatchEntity.case_id == case_id))
+            if manuscript_ids:
+                session.execute(delete(ManuscriptVersion).where(ManuscriptVersion.id.in_(manuscript_ids)))
+            session.execute(delete(AuditEvent).where(AuditEvent.case_id == case_id))
+            session.execute(delete(ResearchCase).where(ResearchCase.id == case_id))
+
     def reset_demo_case(self) -> None:
         with session_scope(self.session_factory) as session:
             scan_ids = list(session.scalars(select(ScanRun.id).where(ScanRun.case_id == DEMO_CASE_ID)))

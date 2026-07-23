@@ -28,6 +28,7 @@ export interface Paper {
   why: string;
   suggestion: string;
   uncertainty: string;
+  reviewState?: 'candidate' | 'edited' | 'confirmed' | 'dismissed';
 }
 
 export interface Claim {
@@ -53,6 +54,7 @@ export interface ActionItem {
   sourcePaperId: string;
   reason: string;
   checklist: string[];
+  status?: 'proposed' | 'open' | 'in_progress' | 'done' | 'dismissed';
 }
 
 export interface VersionRec {
@@ -98,6 +100,7 @@ export interface Project {
     limits: string[];
   };
   rewrite: {
+    patchId?: string;
     claimId: string;
     before: string;
     after: string;

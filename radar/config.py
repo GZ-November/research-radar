@@ -17,6 +17,10 @@ LOCAL_SETTINGS_FILE = PROJECT_ROOT / "data" / "settings.local.env"
 
 # USD per one million tokens: (input, output).
 MODEL_TOKEN_PRICES_USD: dict[str, tuple[float, float]] = {
+    # Current DeepSeek V4 cache-miss input and output rates. Keep legacy
+    # aliases so historical runs can still be estimated.
+    "deepseek-v4-flash": (0.14, 0.28),
+    "deepseek-v4-pro": (0.435, 0.87),
     "deepseek-chat": (0.27, 1.10),
     "deepseek-reasoner": (0.55, 2.19),
 }
@@ -59,7 +63,11 @@ class Settings(BaseSettings):
     llm_model: str | None = None
     llm_base_url: str | None = None
     llm_thinking: Literal["enabled", "disabled"] = "enabled"
-    llm_reasoning_effort: Literal["high", "max"] = "high"
+    # OpenAI supports a wider effort range; DeepSeek maps low/medium to high
+    # and xhigh to max. Provider-specific request builders handle the details.
+    llm_reasoning_effort: Literal[
+        "none", "minimal", "low", "medium", "high", "xhigh", "max"
+    ] = "high"
     llm_max_tokens: int = Field(default=4096, ge=256, le=384_000)
     # Input-side context window used for prompt truncation budgets. Distinct
     # from llm_max_tokens (output cap). None derives a safe default per mode.

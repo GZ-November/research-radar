@@ -42,9 +42,6 @@ COPY --from=python-deps /usr/local/lib/python3.13/site-packages /usr/local/lib/p
 COPY --from=python-deps /usr/local/bin /usr/local/bin
 COPY --from=python-deps /app /app
 
-# Ensure uvicorn is available
-RUN pip install --no-cache-dir uvicorn
-
 EXPOSE 8501
 
 CMD ["uvicorn", "radar.api:app", "--host", "0.0.0.0", "--port", "8501"]

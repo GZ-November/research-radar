@@ -19,5 +19,10 @@ export default defineConfig([
       ecmaVersion: 2020,
       globals: globals.browser,
     },
+    rules: {
+      // The shadcn-style UI modules intentionally export components together
+      // with variants/helpers; this is safe but outside the narrow HMR rule.
+      'react-refresh/only-export-components': 'off',
+    },
   },
 ])

@@ -20,3 +20,6 @@ data/snapshots/*
 !data/snapshots/.gitkeep
 data/uploads/
 .tmp_ref/
+
+# Local duplicate build workspace; the maintained frontend lives in app/.
+research-radar-web/

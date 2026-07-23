@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+import httpx
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -79,6 +80,58 @@ from radar.services.scan_runner import (
     request_cancel,
     start,
 )
+
+_ALLOWED_SETTINGS_KEYS = frozenset(
+    {
+        "LLM_PROVIDER",
+        "LLM_API_KEY",
+        "LLM_MODEL",
+        "LLM_BASE_URL",
+        "LLM_THINKING",
+        "LLM_REASONING_EFFORT",
+        "LLM_MAX_TOKENS",
+        "LLM_CONTEXT_TOKENS",
+        "LLM_TIMEOUT_SECONDS",
+        "LOCAL_LLM_MODEL",
+        "LOCAL_LLM_BASE_URL",
+        "LOCAL_LLM_TIMEOUT_SECONDS",
+        "EMBEDDING_PROVIDER",
+        "EMBEDDING_API_KEY",
+        "EMBEDDING_MODEL",
+        "EMBEDDING_BASE_URL",
+        "EMBEDDING_TIMEOUT_SECONDS",
+        "EMBEDDING_MAX_RETRIES",
+        "PDF_PARSER_BACKEND",
+        "CROSSREF_MAILTO",
+    }
+)
+
+_MODEL_CATALOG = {
+    "deepseek": [
+        {
+            "id": "deepseek-v4-flash",
+            "label": "V4 Flash · 推荐，速度与成本优先",
+        },
+        {
+            "id": "deepseek-v4-pro",
+            "label": "V4 Pro · 复杂研究判断优先",
+        },
+    ],
+    "openai": [
+        {
+            "id": "gpt-5.6-terra",
+            "label": "GPT-5.6 Terra · 推荐，质量/成本平衡",
+        },
+        {
+            "id": "gpt-5.6-sol",
+            "label": "GPT-5.6 Sol · 最强复杂分析",
+        },
+        {
+            "id": "gpt-5.6-luna",
+            "label": "GPT-5.6 Luna · 高频轻量任务",
+        },
+    ],
+}
 
 # ---------------------------------------------------------------------------
 # FastAPI app
@@ -149,6 +202,22 @@ async def create_case(
     if case is None:
         raise HTTPException(500, "case created but not found")
     return _build_summary(case)
+
+
+@app.delete("/api/cases/{case_id}")
+def delete_case(case_id: str) -> dict[str, Any]:
+    """Permanently delete a research case and all its associated data."""
+    svc = _service(CaseService)
+    case = svc.get_case(case_id)
+    if case is None:
+        raise HTTPException(404, f"case not found: {case_id}")
+    try:
+        svc.delete_case(case_id)
+    except RuntimeError as exc:
+        if str(exc) == "case_scan_active":
+            raise HTTPException(409, "请先取消正在运行的扫描，再删除项目")
+        raise
+    return {"deleted": case_id, "title": case.title}
 
 
 @app.get("/api/cases/{case_id}", response_model=ProjectOut)
@@ -327,7 +396,7 @@ def confirm_impact(case_id: str, impact_id: str) -> dict[str, Any]:
     from radar.services.review_service import ReviewService
 
     try:
-        impact = _service(ReviewService).confirm(impact_id)
+        impact = _service(ReviewService).confirm_impact(impact_id)
     except LookupError:
         raise HTTPException(404, f"impact not found: {impact_id}")
     return _impact_to_paper_out(impact).model_dump()
@@ -339,7 +408,7 @@ def dismiss_impact(case_id: str, impact_id: str) -> dict[str, Any]:
     from radar.services.review_service import ReviewService
 
     try:
-        impact = _service(ReviewService).dismiss(impact_id)
+        impact = _service(ReviewService).dismiss_impact(impact_id)
     except LookupError:
         raise HTTPException(404, f"impact not found: {impact_id}")
     return _impact_to_paper_out(impact).model_dump()
@@ -351,7 +420,9 @@ def edit_impact(case_id: str, impact_id: str, body: EditImpactRequest) -> dict[s
     from radar.services.review_service import ReviewService
 
     try:
-        impact = _service(ReviewService).edit(impact_id, body.model_dump(exclude_none=True))
+        impact = _service(ReviewService).edit_impact(
+            impact_id, body.model_dump(exclude_none=True)
+        )
     except LookupError:
         raise HTTPException(404, f"impact not found: {impact_id}")
     except ValueError as exc:
@@ -405,6 +476,7 @@ def generate_patch_for_impact(impact_id: str = File(...)) -> dict[str, Any]:
                 claim_id = rev.claim_id
 
     return {
+        "patchId": patch.id,
         "claimId": claim_id,
         "loc": patch.target_locator,
         "before": patch.before_text,
@@ -542,25 +614,39 @@ def get_app_settings() -> dict[str, Any]:
     """Return the current LLM and embedding configuration."""
     settings = get_settings()
     llm = describe_llm_setup(settings)
+    embedding_provider = (settings.embedding_provider or "").strip().lower()
+    embedding_common = bool(settings.embedding_model and settings.embedding_base_url)
+    emb_configured = embedding_common and (
+        embedding_provider == "ollama"
+        or (
+            embedding_provider in {"openai", "openai_compatible"}
+            and bool(settings.embedding_api_key)
+        )
+    )
     return {
         "llm": {
             "configured": llm["configured"],
             "mode": llm["mode"],
             "model": llm["model"],
             "missing": llm["missing"],
-            "provider": settings.llm_provider,
-            "base_url": settings.llm_base_url,
+            "provider": llm["provider"],
+            "base_url": llm["base_url"],
+            "has_api_key": bool(settings.llm_api_key),
+            "thinking": settings.llm_thinking,
+            "reasoning_effort": settings.llm_reasoning_effort,
         },
         "embedding": {
-            "configured": bool(settings.embedding_model),
-            "model": settings.embedding_model,
-            "provider": settings.embedding_provider,
-            "base_url": settings.embedding_base_url,
+            "configured": emb_configured,
+            "model": settings.embedding_model or "",
+            "provider": settings.embedding_provider or "",
+            "base_url": settings.embedding_base_url or "",
+            "has_api_key": bool(settings.embedding_api_key),
         },
         "local_llm": {
-            "model": settings.local_llm_model,
+            "model": settings.local_llm_model or "",
             "base_url": settings.local_llm_base_url,
         },
+        "model_catalog": _MODEL_CATALOG,
         "pdf_parser_backend": settings.pdf_parser_backend,
     }
 
@@ -568,11 +654,64 @@ def get_app_settings() -> dict[str, Any]:
 @app.put("/api/settings")
 def update_app_settings(body: SettingsUpdate) -> dict[str, Any]:
     """Write one or more settings keys to the local override env file."""
+    normalized = {key.strip().upper(): value for key, value in body.updates.items()}
+    unknown = sorted(set(normalized) - _ALLOWED_SETTINGS_KEYS)
+    if unknown:
+        raise HTTPException(400, f"unsupported settings keys: {', '.join(unknown)}")
+    # Older frontend builds used this sentinel. Never persist it as a real key.
+    normalized = {key: value for key, value in normalized.items() if value != "__keep__"}
     try:
-        save_local_settings(body.updates)
+        save_local_settings(normalized)
     except Exception as exc:
         raise HTTPException(500, str(exc))
-    return {"saved": list(body.updates.keys())}
+    return {"saved": list(normalized.keys())}
+
+
+@app.post("/api/settings/test")
+def test_app_settings() -> dict[str, Any]:
+    """Verify the active model endpoint and confirm the selected model exists."""
+
+    settings = get_settings()
+    setup = describe_llm_setup(settings)
+    if not setup["configured"]:
+        raise HTTPException(400, f"LLM 未完整配置：{', '.join(setup['missing'])}")
+
+    try:
+        if setup["mode"] == "local":
+            response = httpx.get(
+                f"{settings.local_llm_base_url.rstrip('/')}/api/tags", timeout=10
+            )
+            response.raise_for_status()
+            available = [
+                item.get("name", "")
+                for item in (response.json().get("models") or [])
+                if item.get("name")
+            ]
+        else:
+            response = httpx.get(
+                f"{settings.llm_base_url.rstrip('/')}/models",
+                headers={"Authorization": f"Bearer {settings.llm_api_key}"},
+                timeout=15,
+            )
+            response.raise_for_status()
+            available = [
+                item.get("id", "")
+                for item in (response.json().get("data") or [])
+                if item.get("id")
+            ]
+    except (httpx.HTTPError, KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(502, f"模型服务连接失败：{exc}")
+
+    selected = str(setup["model"] or "")
+    if available and selected not in available:
+        raise HTTPException(400, f"服务已连接，但找不到模型：{selected}")
+    return {
+        "ok": True,
+        "mode": setup["mode"],
+        "provider": setup["provider"],
+        "model": selected,
+        "available_models": available,
+    }
 
 
 # ===========================================================================
@@ -839,6 +978,14 @@ def _impact_to_paper_out(imp: ImpactCandidate) -> PaperOut:
         why=suggestion,
         suggestion=suggestion,
         uncertainty=uncertainty,
+        # Older demo databases stored severity-like values (for example
+        # ``informative``) in this column.  Treat unknown legacy values as an
+        # unreviewed candidate instead of failing the entire project response.
+        reviewState=(
+            imp.review_state
+            if imp.review_state in {"candidate", "edited", "confirmed", "dismissed"}
+            else "candidate"
+        ),
     )
 
 
@@ -860,6 +1007,7 @@ def _action_to_out(item: ActionItem) -> dict[str, Any]:
         sourcePaperId=item.impact_candidate_id or "",
         reason=item.rationale or "",
         checklist=item.checklist_json,
+        status=item.status,
     ).model_dump()
 
 
@@ -975,6 +1123,7 @@ def _build_rewrite(case_id: str) -> dict[str, Any]:
                 claim_id = rev.claim_id
 
         return RewriteView(
+            patchId=patch.id,
             claimId=claim_id,
             before=patch.before_text,
             after=patch.after_text,

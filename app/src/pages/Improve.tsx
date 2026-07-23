@@ -1,17 +1,22 @@
 import { useState } from 'react';
-import { getCaseDetail, getAudit, approvePatch, rejectPatch, useApi } from '../api';
-import { type Project, type AuditRec, claimStatusMeta, verdictMeta } from '../data/mock';
+import { getAudit, approvePatch, rejectPatch, useApi } from '../api';
+import { claimStatusMeta, verdictMeta } from '../data/mock';
 import { Reveal, SectionHead } from '../components/chrome';
 import { Spinner } from '../components/ui/spinner';
+import { useProject } from '../contexts/ProjectContext';
 
-export default function Improve({ caseId }: { caseId: string }) {
-  const { data: project, loading, error } = useApi(() => getCaseDetail(caseId), [caseId]);
-  const { data: audit, loading: auditLoading, error: auditError } = useApi(() => getAudit(caseId), [caseId]);
+export default function Improve() {
+  const { project, loading: projectLoading, error: projectError, projectId } = useProject();
+  const { data: audit, loading: auditLoading, error: auditError } = useApi(
+    () => getAudit(projectId),
+    [projectId],
+  );
   const [verdict, setVerdict] = useState<'none' | 'approved' | 'rejected'>('none');
   const [exported, setExported] = useState(false);
   const [patchSubmitting, setPatchSubmitting] = useState(false);
+  const [patchError, setPatchError] = useState('');
 
-  if (loading) {
+  if (projectLoading) {
     return (
       <div className="flex items-center justify-center py-20">
         <Spinner className="size-6 text-neutral-400" />
@@ -19,18 +24,12 @@ export default function Improve({ caseId }: { caseId: string }) {
     );
   }
 
-  if (error) {
+  if (projectError || !project) {
     return (
       <div className="card p-8 text-center">
-        <p className="text-red-600 text-sm">加载失败: {error.message}</p>
-      </div>
-    );
-  }
-
-  if (!project) {
-    return (
-      <div className="card p-8 text-center">
-        <p className="text-neutral-400 text-sm">未找到项目</p>
+        <p className="text-red-600 text-sm">
+          {projectError?.message ?? '未找到项目'}
+        </p>
       </div>
     );
   }
@@ -47,24 +46,34 @@ export default function Improve({ caseId }: { caseId: string }) {
   };
 
   const handleApprove = async () => {
+    if (!rw.patchId) {
+      setPatchError('当前没有可审批的改写补丁。请先从已确认的影响生成补丁。');
+      return;
+    }
     setPatchSubmitting(true);
+    setPatchError('');
     try {
-      await approvePatch(caseId, rw.claimId);
+      await approvePatch(projectId, rw.patchId);
       setVerdict('approved');
     } catch (e) {
-      console.error(e);
+      setPatchError(e instanceof Error ? e.message : String(e));
     } finally {
       setPatchSubmitting(false);
     }
   };
 
   const handleReject = async () => {
+    if (!rw.patchId) {
+      setPatchError('当前没有可驳回的改写补丁。');
+      return;
+    }
     setPatchSubmitting(true);
+    setPatchError('');
     try {
-      await rejectPatch(caseId, rw.claimId);
+      await rejectPatch(projectId, rw.patchId);
       setVerdict('rejected');
     } catch (e) {
-      console.error(e);
+      setPatchError(e instanceof Error ? e.message : String(e));
     } finally {
       setPatchSubmitting(false);
     }
@@ -169,7 +178,7 @@ export default function Improve({ caseId }: { caseId: string }) {
               <>
                 <button
                   className="btn-teal"
-                  disabled={!allOk || patchSubmitting}
+                  disabled={!rw.patchId || !allOk || patchSubmitting}
                   onClick={handleApprove}
                   title={allOk ? '' : '存在未通过的验证项'}
                 >
@@ -179,6 +188,7 @@ export default function Improve({ caseId }: { caseId: string }) {
                   拒绝这版改写
                 </button>
                 {!allOk && <span className="text-xs text-[#B54708]">存在未通过的验证项，需先修正</span>}
+                {!rw.patchId && <span className="text-xs text-neutral-400">暂无待审批补丁</span>}
               </>
             )}
             {verdict === 'approved' && <span className="badge-green badge-dot">已批准 · 可导出至文稿</span>}
@@ -188,6 +198,7 @@ export default function Improve({ caseId }: { caseId: string }) {
                 <button className="btn-quiet" onClick={() => setVerdict('none')}>撤销</button>
               </>
             )}
+            {patchError && <span className="text-xs text-red-600">{patchError}</span>}
           </div>
         </div>
       </Reveal>
